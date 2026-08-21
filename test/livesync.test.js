@@ -30,7 +30,7 @@ test("a full colours file round-trips through withFallbacks", () => {
 });
 
 /** loads the generated bridge extension in a sandbox with a fake vscode, so
- * the live-settings watch is exercised the same way code-server would run it,
+ * the live-settings watch is exercised the same way serve-web would run it,
  * not just checked for valid syntax. os.homedir() is pointed at a scratch
  * directory too, since activate() also stands up the real ipc socket and this
  * must not touch the actual home directory while doing it. */

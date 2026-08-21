@@ -4,8 +4,17 @@ import net from "node:net";
 import path from "node:path";
 
 import { DATA_DIR, LOGS_DIR, STATE_DIR } from "../runtime/paths";
-import { CODE_SERVER_VERSION, ensureCodeServer, installedCodeServer, narrateFetch } from "./vendored";
+import {
+  CLI_DATA_DIR,
+  ensureVscodeCli,
+  installedVscodeCli,
+  installedVscodeServer,
+  narrateFetch,
+} from "./vendored";
 
+/** `--server-data-dir`: the real server keeps its user data in <dir>/data and
+ * its extensions in <dir>/extensions, which is the layout src/profile.ts
+ * writes into. */
 const VSCODE_DIR = path.join(DATA_DIR, "vscode");
 export const STATE_FILE = path.join(STATE_DIR, "server.json");
 
@@ -18,13 +27,15 @@ export interface ServerState {
   version: string;
   startedAt: number;
 }
-/**
- * this is odd i would say
- */
-
 export const CSS_FILE = path.join(DATA_DIR, "inject.css");
 // kept apart from the run state, which is cleared on every stop
 export const PORT_FILE = path.join(DATA_DIR, "injector.port");
+
+export const SERVER_LOG = path.join(LOGS_DIR, "vscode-server.log");
+
+/** The same file src/profile.ts writes; named here too so the injector can be
+ * handed it without server.ts importing profile.ts, which imports this. */
+export const SETTINGS_FILE = path.join(VSCODE_DIR, "data", "User", "settings.json");
 
 function fontAsset(): string {
   for (let dir = __dirname; ; dir = path.dirname(dir)) {
@@ -34,10 +45,30 @@ function fontAsset(): string {
   }
 }
 
-export function codeServerBin(): string {
-  const found = installedCodeServer();
+export function vscodeCliBin(): string {
+  const found = installedVscodeCli();
   if (found) return found;
-  throw new Error(`code-server ${CODE_SERVER_VERSION} not found`);
+  throw new Error("the VS Code cli is not fetched yet");
+}
+
+/** How the workbench is served: Microsoft's `code serve-web`, on loopback,
+ * with no connection token because the injector in front of it is the only
+ * thing that ever connects. */
+export function serveWebArgs(port: number): string[] {
+  return [
+    "serve-web",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    String(port),
+    "--without-connection-token",
+    "--accept-server-license-terms",
+    "--server-data-dir",
+    VSCODE_DIR,
+    "--cli-data-dir",
+    CLI_DATA_DIR,
+    "--disable-telemetry",
+  ];
 }
 
 function readState(): ServerState | null {
@@ -122,51 +153,27 @@ async function startServer(): Promise<ServerState> {
   const existing = await currentServer();
   if (existing) return existing;
 
-  const bin = await ensureCodeServer(narrateFetch(`code-server ${CODE_SERVER_VERSION}`));
+  const bin = await ensureVscodeCli(narrateFetch("the VS Code cli"));
   // asked now, awaited after the injector is up — the version is a detail for
   // `tode daemon status`, not something the boot should stall on
   const version = serverVersion(bin);
   const port = await freePort();
   fs.mkdirSync(LOGS_DIR, { recursive: true });
-  const log = fs.openSync(path.join(LOGS_DIR, "code-server.log"), "a");
-  const child = spawn(
-    bin,
-    [
-      "--auth",
-      "none",
-      "--bind-addr",
-      `127.0.0.1:${port}`,
-      "--user-data-dir",
-      path.join(VSCODE_DIR, "user-data"),
-      "--extensions-dir",
-      path.join(VSCODE_DIR, "extensions"),
-      "--app-name",
-      "tode",
-      "--disable-telemetry",
-      "--disable-update-check",
-      "--disable-workspace-trust",
-      "--disable-getting-started-override",
-      "--ignore-last-opened",
-    ],
-    {
-      detached: true,
-      stdio: ["ignore", log, log],
-      env: {
-        ...process.env,
-        EXTENSIONS_GALLERY: JSON.stringify({
-          serviceUrl: "https://marketplace.visualstudio.com/_apis/public/gallery",
-          itemUrl: "https://marketplace.visualstudio.com/items",
-          cacheUrl: "https://vscode.blob.core.windows.net/gallery/index",
-          controlUrl: "",
-        }),
-      },
-    },
-  );
+  const log = fs.openSync(SERVER_LOG, "a");
+  // serve-web only pulls the server down when a page is asked for, so a first
+  // run is a long quiet moment unless it says what it is doing
+  if (!installedVscodeServer()) {
+    process.stderr.write("tode: fetching the VS Code server, the first window waits on it\n");
+  }
+  const child = spawn(bin, serveWebArgs(port), {
+    detached: true,
+    stdio: ["ignore", log, log],
+  });
   child.unref();
-  if (!child.pid) throw new Error("could not start code-server");
+  if (!child.pid) throw new Error("could not start code serve-web");
 
   const injector = await startInjector(port, log);
-  void codeServerReady(port, child.pid).then((up) => {
+  void serveWebReady(port, child.pid).then((up) => {
     if (up) void warmUp(injector.port);
   });
   const state = {
@@ -181,7 +188,7 @@ async function startServer(): Promise<ServerState> {
   return state;
 }
 
-async function codeServerReady(port: number, pid: number): Promise<boolean> {
+async function serveWebReady(port: number, pid: number): Promise<boolean> {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (await answering(port)) return true;
@@ -189,6 +196,29 @@ async function codeServerReady(port: number, pid: number): Promise<boolean> {
     await sleep(60);
   }
   return false;
+}
+
+/** The server itself only lands on disk once serve-web has been asked for a
+ * page, so anything that needs the binary — installing an extension, listing
+ * them — starts the server and waits for the download to finish. */
+export async function ensureVscodeServer(): Promise<string> {
+  const already = installedVscodeServer();
+  if (already) return already;
+
+  const state = await ensureServer();
+  await fetch(origin(state), { headers: { accept: "text/html" } }).catch(() => null);
+  const deadline = Date.now() + 10 * 60_000;
+  let announced = false;
+  while (Date.now() < deadline) {
+    const bin = installedVscodeServer();
+    if (bin) return bin;
+    if (!announced) {
+      process.stderr.write("tode: fetching the VS Code server\n");
+      announced = true;
+    }
+    await sleep(500);
+  }
+  throw new Error(`the VS Code server did not download — see ${SERVER_LOG}`);
 }
 
 async function injectorPort(portFile: string): Promise<number> {
@@ -216,13 +246,13 @@ export async function startInjector(
   portFile = PORT_FILE,
 ): Promise<{ pid: number; port: number }> {
   const port = await injectorPort(portFile);
-  // interesting? a script?
   const script = path.join(__dirname, "injector-main.js");
   const font = fontAsset();
-  const child = spawn(process.execPath, [script, String(upstream), String(port), CSS_FILE, font], {
-    detached: true,
-    stdio: ["ignore", log, log],
-  });
+  const child = spawn(
+    process.execPath,
+    [script, String(upstream), String(port), CSS_FILE, font, SETTINGS_FILE],
+    { detached: true, stdio: ["ignore", log, log] },
+  );
   child.unref();
   if (!child.pid) throw new Error("could not start the css injector");
   const deadline = Date.now() + 10_000;

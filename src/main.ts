@@ -6,12 +6,12 @@ import path from "node:path";
 
 import {
   CSS_FILE,
-  codeServerBin,
   ensureServer,
+  ensureVscodeServer,
   origin,
   stopServer,
 } from "./codeserver/server";
-import { CODE_SERVER_VERSION, ensureCodeServer, narrateFetch } from "./codeserver/vendored";
+import { ensureVscodeCli, narrateFetch } from "./codeserver/vendored";
 import { installBridge, requestStartupOpen } from "./bridge";
 import { BOOT_AFTER_APPLY, autoApplyShared, shortcutsCommand } from "./shortcuts/wizard";
 import { importCommand } from "./import/command";
@@ -43,7 +43,6 @@ import { upgrade } from "./upgrade";
 import { hex } from "./theme/color";
 import { generateTheme, semanticColors } from "./theme/generate";
 
-// hm? does it ever get installed at home dir local?
 function shimPath(): string {
   const binHome = process.env.XDG_BIN_HOME ?? path.join(os.homedir(), ".local", "bin");
   return path.join(binHome, "tode");
@@ -166,8 +165,8 @@ const IGNORED_WITH_VALUE: string[] = [
 ];
 
 const UNSUPPORTED: [string, string][] = [
-  ["--disable-extensions", "extensions are per code-server, not per window"],
-  ["--disable-extension", "extensions are per code-server, not per window"],
+  ["--disable-extensions", "extensions are per server, not per window"],
+  ["--disable-extension", "extensions are per server, not per window"],
 ];
 
 function dropIgnored(args: string[]): void {
@@ -249,7 +248,7 @@ async function openCommand(args: string[]): Promise<number> {
   const target = wanted[0] ?? resolveTarget(undefined, process.cwd());
   const runtime = await resolveRuntimeWithProgress();
   done("runtime");
-  await ensureCodeServer(narrateFetch(`code-server ${CODE_SERVER_VERSION}`));
+  await ensureVscodeCli(narrateFetch("the VS Code cli"));
   const { palette } = await readPalette();
   ensureFont();
   installTheme(palette);
@@ -265,7 +264,7 @@ async function openCommand(args: string[]): Promise<number> {
     installBridge(todeCommand());
     installKeybindings();
     const server = await ensureServer();
-    done("code-server");
+    done("vscode");
     const startupFiles = files.filter((file) => file.line !== undefined || file.path !== target.file);
     if (review || startupFiles.length > 0 || pair.length > 0) {
       requestStartupOpen({
@@ -292,7 +291,7 @@ async function openCommand(args: string[]): Promise<number> {
   );
 }
 
-function importProfile(dir: string): void {
+async function importProfile(dir: string): Promise<void> {
   const editor: Editor = { name: "this machine", userDir: dir, extensionsDir: null, lastUsed: 0 };
   process.stdout.write("importing settings\n");
   const report = runImport(editor);
@@ -302,57 +301,65 @@ function importProfile(dir: string): void {
   if (report.snippets.length) parts.push(`${report.snippets.length} snippet files`);
   if (report.tasks) parts.push("tasks");
   if (parts.length) process.stdout.write(`imported ${parts.join(", ")}\n`);
-  installExtensions(path.join(dir, "extensions.txt"));
+  await installExtensions(path.join(dir, "extensions.txt"));
 }
 
-function installExtensions(listFile: string): void {
+async function installExtensions(listFile: string): Promise<void> {
   let ids: string[];
   try {
     ids = fs.readFileSync(listFile, "utf8").split("\n").map((line) => line.trim()).filter(Boolean);
   } catch {
     return;
   }
-  const have = new Set(installedExtensions().map((id) => id.toLowerCase()));
+  const have = new Set((await installedExtensions()).map((id) => id.toLowerCase()));
   const missing = ids.filter((entry) => !have.has(entry.split("@")[0].toLowerCase()));
   if (missing.length === 0) return;
   process.stdout.write(`installing ${missing.length} extensions\n`);
   const args = missing.flatMap((id) => ["--install-extension", id]);
-  if (extensionCommand(args) !== 0) {
+  if ((await extensionCommand(args)) !== 0) {
     process.stderr.write("  some extensions could not be installed\n");
   }
   registerThemeExtension();
 }
 
-function installedExtensions(): string[] {
+function installedExtensions(): Promise<string[]> {
+  return extensionOutput(["--list-extensions"]);
+}
+
+/** Extensions are managed by the VS Code server itself — the cli's own
+ * `code --install-extension` drives a desktop install, and there isn't one
+ * here. The server binary only exists once serve-web has fetched it. */
+async function extensionCommand(args: string[], quiet = false): Promise<number> {
   const result = spawnSync(
-    codeServerBin(),
-    ["--list-extensions", "--extensions-dir", EXTENSIONS_DIR, "--user-data-dir", path.join(VSCODE_DIR, "user-data")],
+    await ensureVscodeServer(),
+    [...args, "--server-data-dir", VSCODE_DIR, "--extensions-dir", EXTENSIONS_DIR],
+    { stdio: quiet ? ["ignore", "inherit", "ignore"] : "inherit" },
+  );
+  return result.status ?? 1;
+}
+
+/** The same server binary, but with stdout captured rather than inherited. */
+async function extensionOutput(args: string[]): Promise<string[]> {
+  const result = spawnSync(
+    await ensureVscodeServer(),
+    [...args, "--server-data-dir", VSCODE_DIR, "--extensions-dir", EXTENSIONS_DIR],
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   );
   if (result.status !== 0 || !result.stdout) return [];
   return result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
-function extensionCommand(args: string[], quiet = false): number {
-  const result = spawnSync(
-    codeServerBin(),
-    [...args, "--extensions-dir", EXTENSIONS_DIR, "--user-data-dir", path.join(VSCODE_DIR, "user-data")],
-    { stdio: quiet ? ["ignore", "inherit", "ignore"] : "inherit" },
-  );
-  return result.status ?? 1;
-}
-
-function listExtensions(withVersions: boolean): number {
+function listExtensions(withVersions: boolean): Promise<number> {
   return extensionCommand(withVersions ? ["--list-extensions", "--show-versions"] : ["--list-extensions"], true);
 }
 
-function manageExtensions(install: string[], remove: string[]): number {
+async function manageExtensions(install: string[], remove: string[]): Promise<number> {
   for (const id of remove) {
-    const code = extensionCommand(["--uninstall-extension", id]);
+    const code = await extensionCommand(["--uninstall-extension", id]);
     if (code !== 0) return code;
   }
   for (const id of install) {
-    const code = extensionCommand(["--install-extension", id]);
+    const code = await extensionCommand(["--install-extension", id]);
     if (code !== 0) return code;
   }
   registerThemeExtension();
@@ -544,11 +551,11 @@ async function serveCommand(args: string[]): Promise<number> {
   const importDir = takeFlag(args, "--import");
   const prepare = takeBool(args, "--prepare");
   const requested = args.find((arg) => !arg.startsWith("-"));
-  await ensureCodeServer(narrateFetch(`code-server ${CODE_SERVER_VERSION}`));
+  await ensureVscodeCli(narrateFetch("the VS Code cli"));
   const palette = paletteFile
     ? (JSON.parse(fs.readFileSync(paletteFile, "utf8")) as TerminalPalette)
     : (await readPalette()).palette;
-  if (importDir) importProfile(importDir);
+  if (importDir) await importProfile(importDir);
   ensureFont();
   installTheme(palette);
   installCss(palette);

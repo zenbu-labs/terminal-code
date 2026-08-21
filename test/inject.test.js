@@ -5,7 +5,12 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { createInjector, injectedCss, FONT_ROUTE } = require("../dist/codeserver/inject.js");
+const {
+  createInjector,
+  injectedCss,
+  withWorkbenchDefaults,
+  FONT_ROUTE,
+} = require("../dist/codeserver/inject.js");
 
 const listen = (server) =>
   new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
@@ -25,7 +30,7 @@ const close = (server) =>
     setTimeout(done, 100).unref();
   });
 
-/** stands in for code-server, and remembers the headers it was handed */
+/** stands in for the VS Code server, and remembers the headers it was handed */
 function fakeUpstream(handler) {
   const seen = [];
   const server = http.createServer((request, response) => {
@@ -40,15 +45,21 @@ function fakeUpstream(handler) {
   return { server, seen };
 }
 
-async function withPair(handler, run) {
+async function withPair(handler, run, settings) {
   const { server: upstream, seen } = fakeUpstream(handler);
   const upstreamPort = await listen(upstream);
-  const cssFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tode-css-")), "inject.css");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tode-css-"));
+  const cssFile = path.join(dir, "inject.css");
   fs.writeFileSync(cssFile, "html{background:#101010 !important;}");
-  const proxy = createInjector(upstreamPort, cssFile);
+  let settingsFile;
+  if (settings !== undefined) {
+    settingsFile = path.join(dir, "settings.json");
+    fs.writeFileSync(settingsFile, settings);
+  }
+  const proxy = createInjector(upstreamPort, cssFile, undefined, undefined, settingsFile);
   const proxyPort = await listen(proxy);
   try {
-    await run({ proxyPort, upstreamPort, seen, cssFile });
+    await run({ proxyPort, upstreamPort, seen, cssFile, settingsFile });
   } finally {
     await close(proxy);
     await close(upstream);
@@ -116,16 +127,20 @@ test("a document with no head still gets the css", async () => {
   );
 });
 
-test("upstream is told the request came from itself", async () => {
+test("the workbench is left on one origin: the client's own host goes through", async () => {
   await withPair(
     (_request, response) => {
       response.writeHead(200, { "content-type": "text/html" });
       response.end("<html><head></head></html>");
     },
-    async ({ proxyPort, upstreamPort, seen }) => {
+    async ({ proxyPort, seen }) => {
       await get(proxyPort, { accept: "text/html", origin: `http://127.0.0.1:${proxyPort}` });
-      assert.equal(seen[0].headers.host, `127.0.0.1:${upstreamPort}`);
-      assert.equal(seen[0].headers.origin, `http://127.0.0.1:${upstreamPort}`);
+      // the server builds the workbench's remote authority out of the host it
+      // was asked with, and its content security policy then only allows that
+      // one origin — pointing it at the upstream would block every resource
+      // the page fetches
+      assert.equal(seen[0].headers.host, `127.0.0.1:${proxyPort}`);
+      assert.equal(seen[0].headers.origin, `http://127.0.0.1:${proxyPort}`);
     },
   );
 });
@@ -233,7 +248,7 @@ test("the proxy injects css and never a script", async () => {
   );
 });
 
-test("a request waits while code-server is still booting, then goes through", async () => {
+test("a request waits while the VS Code server is still booting, then goes through", async () => {
   const late = http.createServer((_q, r) => {
     r.writeHead(200, { "content-type": "text/html" });
     r.end("<html><head></head><body>up</body></html>");
@@ -251,7 +266,7 @@ test("a request waits while code-server is still booting, then goes through", as
   });
   try {
     const pending = get(proxyPort, { accept: "text/html" });
-    // nothing is listening upstream yet, exactly as when code-server is booting
+    // nothing is listening upstream yet, exactly as when serve-web is booting
     await new Promise((resolve) => setTimeout(resolve, 300));
     await new Promise((resolve) => revived.listen(port, "127.0.0.1", resolve));
     const { status, body } = await pending;
@@ -268,3 +283,53 @@ test("the empty editor stays empty: the watermark is always hidden", () => {
   assert.match(css, /\.editor-group-watermark\{display:none !important;\}/);
 });
 
+
+const workbenchPage = (settings) =>
+  `<html><head><meta id="vscode-workbench-web-configuration" data-settings="${settings
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")}"></head><body></body></html>`;
+
+test("tode's settings reach the workbench as configuration defaults", () => {
+  const html = workbenchPage(JSON.stringify({ folderUri: { path: "/w" } }));
+  const out = withWorkbenchDefaults(html, { "workbench.colorTheme": "Tode" });
+  const settings = JSON.parse(
+    out
+      .match(/data-settings="([^"]*)"/)[1]
+      .replaceAll("&quot;", '"')
+      .replaceAll("&#39;", "'")
+      .replaceAll("&lt;", "<")
+      .replaceAll("&gt;", ">")
+      .replaceAll("&amp;", "&"),
+  );
+  // what the server put there survives
+  assert.deepEqual(settings.folderUri, { path: "/w" });
+  assert.deepEqual(settings.configurationDefaults, { "workbench.colorTheme": "Tode" });
+  // the folder was asked for by name, so it is not put behind a trust prompt
+  assert.equal(settings.enableWorkspaceTrust, false);
+});
+
+test("a page without the workbench configuration is left alone", () => {
+  const plain = "<html><head></head></html>";
+  assert.equal(withWorkbenchDefaults(plain, { a: 1 }), plain);
+  const broken = workbenchPage("{not json");
+  assert.equal(withWorkbenchDefaults(broken, { a: 1 }), broken);
+});
+
+test("the settings file is read on every load, so an edit lands on refresh", async () => {
+  await withPair(
+    (_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end(workbenchPage("{}"));
+    },
+    async ({ proxyPort, settingsFile }) => {
+      const first = await get(proxyPort, { accept: "text/html" });
+      assert.match(first.body, /&quot;workbench.colorTheme&quot;:&quot;Tode&quot;/);
+      fs.writeFileSync(settingsFile, '{ "editor.fontSize": 17 }');
+      const second = await get(proxyPort, { accept: "text/html" });
+      assert.match(second.body, /&quot;editor.fontSize&quot;:17/);
+      // and the css is still there alongside it
+      assert.match(second.body, /<style id="tode-injected">/);
+    },
+    '{\n  // tode owns this one\n  "workbench.colorTheme": "Tode",\n}',
+  );
+});
