@@ -2,7 +2,9 @@ import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 
-/** code-server in front of a proxy that puts tode's css into the workbench page.
+import { parseJsonc } from "../jsonc";
+
+/** The VS Code server in front of a proxy that puts tode's css into the workbench page.
  *
  * The page needs the css before its first paint, and reaching in over the
  * devtools protocol after the fact means a visible flash, so the html is edited
@@ -13,14 +15,63 @@ import net from "node:net";
  * (--open-tabs-in-popup-stack). */
 export const FONT_ROUTE = "/__tode/font.ttf";
 
+/** The workbench in a browser keeps its user data in the browser, not in the
+ * server's --server-data-dir, so a settings file on disk would never be read.
+ * The document carries the embedder's options instead, and configurationDefaults
+ * is the supported way in: tode's settings arrive as defaults on every load,
+ * which is what "tode owns these keys" already meant, and anything the user
+ * sets in the editor still wins. */
+const CONFIG_META = /(<meta\s+id="vscode-workbench-web-configuration"\s+data-settings=")([^"]*)(")/;
+
+const ENTITIES: Record<string, string> = {
+  "&quot;": '"',
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&#39;": "'",
+};
+
+function decodeAttribute(value: string): string {
+  return value.replace(/&quot;|&amp;|&lt;|&gt;|&#39;/g, (entity) => ENTITIES[entity]);
+}
+
+function encodeAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+export function withWorkbenchDefaults(html: string, defaults: Record<string, unknown>): string {
+  const found = html.match(CONFIG_META);
+  if (!found) return html;
+  let config: Record<string, unknown>;
+  try {
+    config = JSON.parse(decodeAttribute(found[2])) as Record<string, unknown>;
+  } catch {
+    return html;
+  }
+  const merged = {
+    ...config,
+    // the folder was asked for by name; a prompt in front of it is only in the way
+    enableWorkspaceTrust: false,
+    configurationDefaults: {
+      ...((config.configurationDefaults as Record<string, unknown>) ?? {}),
+      ...defaults,
+    },
+  };
+  return html.replace(CONFIG_META, `$1${encodeAttribute(JSON.stringify(merged))}$3`);
+}
+
 export function createInjector(
   upstreamPort: number,
   cssFile: string,
   fontFile?: string,
   holdMs = 20_000,
+  settingsFile?: string,
 ): http.Server {
-  const upstreamHost = `127.0.0.1:${upstreamPort}`;
-
   const readCss = (): string => {
     try {
       return fs.readFileSync(cssFile, "utf8");
@@ -29,16 +80,23 @@ export function createInjector(
     }
   };
 
-  // code-server checks that a request comes from its own origin, so the
-  // rewritten headers have to say so even though the browser said otherwise
-  const forwardHeaders = (incoming: http.IncomingHttpHeaders, wantsHtml: boolean) => {
-    const headers: http.IncomingHttpHeaders = { ...incoming, host: upstreamHost };
-    for (const name of ["origin", "referer"] as const) {
-      const value = headers[name];
-      if (typeof value === "string") {
-        headers[name] = value.replace(/^https?:\/\/[^/]+/, `http://${upstreamHost}`);
-      }
+  const readDefaults = (): Record<string, unknown> => {
+    if (!settingsFile) return {};
+    try {
+      const parsed = parseJsonc(fs.readFileSync(settingsFile, "utf8"));
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
     }
+  };
+
+  // The browser talks to the injector and the workbench talks to whatever the
+  // host header said, so the client's own host is carried through: one origin
+  // for the document, its resources and its websocket. Rewriting it to the
+  // upstream would leave the page fetching across origins, which the
+  // workbench's own content security policy refuses.
+  const forwardHeaders = (incoming: http.IncomingHttpHeaders, wantsHtml: boolean) => {
+    const headers: http.IncomingHttpHeaders = { ...incoming };
     // an encoded body cannot be edited, so documents are asked for in the clear
     if (wantsHtml) headers["accept-encoding"] = "identity";
     return headers;
@@ -77,7 +135,8 @@ export function createInjector(
         everAnswered = true;
         const type = from.headers["content-type"] ?? "";
         const css = readCss();
-        if (!type.includes("text/html") || !css) {
+        const defaults = readDefaults();
+        if (!type.includes("text/html") || (!css && Object.keys(defaults).length === 0)) {
           response.writeHead(from.statusCode ?? 502, from.headers);
           from.pipe(response);
           return;
@@ -86,10 +145,11 @@ export function createInjector(
         from.on("data", (chunk: Buffer) => chunks.push(chunk));
         from.on("end", () => {
           const body = Buffer.concat(chunks).toString("utf8");
-          const style = `<style id="tode-injected">${css}</style>`;
-          const patched = body.includes("</head>")
+          const style = css ? `<style id="tode-injected">${css}</style>` : "";
+          const styled = body.includes("</head>")
             ? body.replace("</head>", `${style}</head>`)
             : `${style}${body}`;
+          const patched = withWorkbenchDefaults(styled, defaults);
           const out = Buffer.from(patched, "utf8");
           const headers = { ...from.headers, "content-length": String(out.byteLength) };
           delete headers["content-encoding"];
@@ -102,14 +162,14 @@ export function createInjector(
       },
     );
     upstream.on("error", (error: NodeJS.ErrnoException) => {
-      // code-server may still be booting: the browser was started alongside it
+      // the server may still be booting: the browser was started alongside it
       // rather than after it, so the request waits instead of failing
       if (error.code === "ECONNREFUSED" && !everAnswered && Date.now() - started < holdMs) {
         setTimeout(() => server.emit("request", request, response), 60);
         return;
       }
       if (!response.headersSent) response.writeHead(502);
-      response.end("tode: code-server is not answering\n");
+      response.end("tode: the VS Code server is not answering\n");
     });
     request.pipe(upstream);
   });
@@ -133,7 +193,7 @@ export function createInjector(
       client.pipe(target);
       // an upgraded socket allows half open, so a browser going away shows up as
       // "end" and never as "close". Watching only for close would leave the
-      // connection to code-server behind on every reload.
+      // connection to the server behind on every reload.
       const drop = () => {
         target.destroy();
         client.destroy();

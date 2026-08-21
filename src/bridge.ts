@@ -5,15 +5,8 @@ import type { BridgeCtx } from "./bridge/ctx";
 import { bridgeMain } from "./bridge/extension";
 import type { OpenRequest } from "./ipc";
 import { DATA_DIR } from "./runtime/paths";
-import { EXTENSIONS_DIR, LIVE_THEME_FILE } from "./profile";
-import {
-  IMPORT_DECISION_ID,
-  QUIT_CHORD,
-  QUIT_COMMAND,
-  hintWhen,
-  loadDecisions,
-  quitWhen,
-} from "./shortcuts/store";
+import { EXTENSIONS_DIR, LIVE_THEME_FILE, liveBindings } from "./profile";
+import { IMPORT_DECISION_ID, QUIT_CHORD, loadDecisions } from "./shortcuts/store";
 
 const BRIDGE_ID = "tode.tode-bridge";
 const BRIDGE_VERSION = "1.5.1";
@@ -26,21 +19,7 @@ export function requestStartupOpen(request: Partial<OpenRequest>): void {
 }
 export const BRIDGE_DIR = path.join(EXTENSIONS_DIR, `${BRIDGE_ID}-${BRIDGE_VERSION}`);
 
-/**
- *
- * i need to map out the code this is basically gonna be a giant code review session
- *
- * the obvious question is where is the entrypoint of the program
- * so i can start traversing it
- *
- *
- */
 function manifest(): unknown {
-  const quitBinding = { command: QUIT_COMMAND, key: QUIT_CHORD, when: quitWhen() };
-  const hintBinding =
-    QUIT_CHORD === "ctrl+c"
-      ? []
-      : [{ command: "tode.quitHint", key: "ctrl+c", when: hintWhen() }];
   return {
     name: "tode-bridge",
     displayName: "terminal-code",
@@ -59,12 +38,15 @@ function manifest(): unknown {
       // confirmQuit (the ctrl+c reflex) and quitHint (the redirect toast) are
       // keybinding targets, and a palette full of quit flavours reads as noise
       commands: [{ command: "tode.quit", title: "Quit", category: "terminal-code" }],
-      keybindings: [quitBinding, ...hintBinding],
+      // the browser holds the workbench's user keybindings, so the file tode
+      // writes cannot reach it — the bridge carries the same list in instead
+      keybindings: liveBindings().map(({ key, command, when }) =>
+        when ? { command, key, when } : { command, key },
+      ),
     },
   };
 }
 
-// hm this is complicated, i dont think the decision choice case makes sense
 export function quitHintMessage(): string {
   const choices = loadDecisions()?.choices ?? {};
   const decision = choices[IMPORT_DECISION_ID] ?? choices[QUIT_CHORD];

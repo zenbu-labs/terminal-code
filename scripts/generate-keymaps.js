@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-/* Regenerates assets/keymaps/vscode-<platform>.json from the pinned
-   code-server itself, so the wizard's picture of "chords the editor binds" is
-   derived, never hand-maintained. Run it when CODE_SERVER_VERSION bumps.
+/* Regenerates assets/keymaps/vscode-<platform>.json from VS Code itself, so
+   the wizard's picture of "chords the editor binds" is derived, never
+   hand-maintained. Run it when the bindings VS Code ships change.
 
-   How: code-server starts with a scratch profile holding one tiny extension
+   How: `code serve-web` starts with a scratch profile holding one tiny extension
    that runs "Open Default Keyboard Shortcuts (JSON)" and writes the document
    to disk. The keymap follows the *client* platform, so a headless Chrome
    visits once as itself (macOS) and once wearing the linux user agent. */
@@ -13,8 +13,8 @@ const os = require("os");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const { CODE_SERVER_VERSION, codeServerRoot, ensureCodeServer, narrateFetch } = require(path.join(ROOT, "dist/codeserver/vendored.js"));
-const { freePort, answering } = require(path.join(ROOT, "dist/codeserver/server.js"));
+const { ensureVscodeCli, narrateFetch } = require(path.join(ROOT, "dist/codeserver/vendored.js"));
+const { freePort, answering, serveWebArgs } = require(path.join(ROOT, "dist/codeserver/server.js"));
 const { parseJsonc } = require(path.join(ROOT, "dist/jsonc.js"));
 
 /* Enough of the devtools protocol to set the page's user agent and send it
@@ -108,6 +108,8 @@ exports.activate = async () => {
       const doc = vscode.window.activeTextEditor && vscode.window.activeTextEditor.document;
       const text = doc ? doc.getText() : "";
       if (text.includes('"key"')) {
+        // the version lands first so a finished dump always has one beside it
+        fs.writeFileSync(out + ".version", vscode.version);
         fs.writeFileSync(out, text);
         return;
       }
@@ -117,14 +119,23 @@ exports.activate = async () => {
 };
 `;
 
-async function codeServerBin() {
-  const bin = path.join(codeServerRoot(), "bin", "code-server");
-  if (!fs.existsSync(bin)) await ensureCodeServer(narrateFetch(`code-server ${CODE_SERVER_VERSION}`));
-  if (!fs.existsSync(bin)) {
-    console.error(`pinned code-server ${CODE_SERVER_VERSION} did not land at ${bin}`);
+async function vscodeCli() {
+  try {
+    return await ensureVscodeCli(narrateFetch("the VS Code cli"));
+  } catch (error) {
+    console.error(`could not fetch the VS Code cli: ${error.message}`);
     process.exit(1);
   }
-  return bin;
+}
+
+/** serve-web keeps the profile under --server-data-dir: data/ for user data,
+ * extensions/ for extensions, which is where scratchProfile() writes. Only the
+ * profile is scratch — --cli-data-dir is left as serveWebArgs has it, so the
+ * dump reuses the server already on this machine instead of pulling another. */
+function scratchServerArgs(port, scratch) {
+  return serveWebArgs(port).map((arg, at, args) =>
+    args[at - 1] === "--server-data-dir" ? scratch : arg,
+  );
 }
 
 function scratchProfile() {
@@ -161,14 +172,8 @@ async function dump(platform) {
   const dumpFile = path.join(scratch, "dump.json");
   const serverPort = await freePort();
   const server = spawn(
-    await codeServerBin(),
-    [
-      "--auth", "none",
-      "--bind-addr", `127.0.0.1:${serverPort}`,
-      "--user-data-dir", path.join(scratch, "data"),
-      "--extensions-dir", path.join(scratch, "extensions"),
-      "--disable-telemetry", "--disable-update-check", "--disable-workspace-trust",
-    ],
+    await vscodeCli(),
+    scratchServerArgs(serverPort, scratch),
     { env: { ...process.env, KEYMAP_DUMP_FILE: dumpFile }, stdio: "ignore" },
   );
   const chromePort = await freePort();
@@ -184,7 +189,7 @@ async function dump(platform) {
     { stdio: "ignore" },
   );
   try {
-    await waitFor(() => answering(serverPort), 30_000, "code-server");
+    await waitFor(() => answering(serverPort), 30_000, "the VS Code server");
     await waitFor(() => answering(chromePort), 15_000, "chrome devtools");
     const url = `http://127.0.0.1:${serverPort}/`;
     // the emulation override lives only as long as the debug session, so the
@@ -208,7 +213,7 @@ async function dump(platform) {
         });
       }
       await session.send("Page.navigate", { url });
-      await waitFor(() => fs.existsSync(dumpFile), 60_000, `the ${platform} keymap dump`);
+      await waitFor(() => fs.existsSync(dumpFile), 10 * 60_000, `the ${platform} keymap dump`);
     } finally {
       session.close();
     }
@@ -216,7 +221,7 @@ async function dump(platform) {
     if (!Array.isArray(bindings) || bindings.length < 100) {
       throw new Error(`the ${platform} dump does not look like a keymap (${bindings?.length} entries)`);
     }
-    return bindings;
+    return { bindings, version: fs.readFileSync(`${dumpFile}.version`, "utf8").trim() };
   } finally {
     chrome.kill("SIGKILL");
     server.kill("SIGTERM");
@@ -232,12 +237,12 @@ async function main() {
   const out = path.join(ROOT, "assets", "keymaps");
   fs.mkdirSync(out, { recursive: true });
   for (const platform of ["mac", "linux"]) {
-    process.stderr.write(`dumping the ${platform} keymap from code-server ${CODE_SERVER_VERSION}\n`);
-    const bindings = await dump(platform);
+    process.stderr.write(`dumping the ${platform} keymap from the VS Code server\n`);
+    const { bindings, version } = await dump(platform);
     const file = path.join(out, `vscode-${platform}.json`);
     fs.writeFileSync(
       file,
-      `${JSON.stringify({ codeServer: CODE_SERVER_VERSION, platform, bindings }, null, 1)}\n`,
+      `${JSON.stringify({ vscode: version, platform, bindings }, null, 1)}\n`,
     );
     process.stderr.write(`  ${bindings.length} bindings -> ${path.relative(ROOT, file)}\n`);
   }

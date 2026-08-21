@@ -19,12 +19,33 @@ import {
 } from "./theme/generate";
 
 export const VSCODE_DIR = path.join(DATA_DIR, "vscode");
-export const USER_DIR = path.join(VSCODE_DIR, "user-data", "User");
+/** `code serve-web --server-data-dir VSCODE_DIR` puts the profile here; the
+ * server derives it itself and ignores a --user-data-dir. */
+export const USER_DIR = path.join(VSCODE_DIR, "data", "User");
 export const EXTENSIONS_DIR = path.join(VSCODE_DIR, "extensions");
 export const THEME_EXTENSION_ID = "tode.tode-theme";
 
 function themeExtensionDir(fingerprint: string): string {
   return path.join(EXTENSIONS_DIR, `${THEME_EXTENSION_ID}-${fingerprint}`);
+}
+
+/** An install from the code-server days keeps its profile in user-data/; the
+ * real server reads data/. Carrying it over once keeps settings, history and
+ * state across the switch. */
+export function adoptServerLayout(): void {
+  const old = path.join(VSCODE_DIR, "user-data");
+  const current = path.join(VSCODE_DIR, "data");
+  if (!fs.existsSync(old) || fs.existsSync(current)) return;
+  try {
+    fs.renameSync(old, current);
+  } catch (error) {
+    // the open carries on with an empty profile rather than failing, but a
+    // silent one would look like the settings simply vanished
+    process.stderr.write(
+      `tode: could not move the profile from ${old} to ${current} (${(error as Error).message}); ` +
+        "the editor starts on a fresh profile, the old one is still there\n",
+    );
+  }
 }
 
 function forgetOldThemeExtensions(keep: string): void {
@@ -41,9 +62,7 @@ function forgetOldThemeExtensions(keep: string): void {
     }
   }
 }
-// hm
 export const PALETTE_CACHE = path.join(DATA_DIR, "palette.json");
-// hm
 export const LIVE_THEME_FILE = path.join(DATA_DIR, "live-theme.json");
 
 export const FONT_FAMILY = "JetBrains Mono";
@@ -59,7 +78,6 @@ export function assetPath(name: string): string {
 
 export const FONT_ASSET = FONT_FILE;
 
-// interesting, we actually install the font at a legimate location?
 export function userFontsDir(): string {
   if (process.platform === "darwin") return path.join(os.homedir(), "Library", "Fonts");
   const dataHome =
@@ -132,9 +150,6 @@ function writeIfChanged(file: string, contents: string): boolean {
   return true;
 }
 
-/**
- * sus
- */
 export interface ThemeDocument {
   name?: string;
   type?: string;
@@ -251,22 +266,22 @@ export const SETTINGS: Record<string, unknown> = {
   "workbench.startupEditor": "none",
   "workbench.secondarySideBar.defaultVisibility": "hidden",
   "chat.commandCenter.enabled": false,
-  // wait what
   "workbench.tips.enabled": false,
   "workbench.welcomePage.walkthroughs.openOnInstall": false,
   "window.commandCenter": false,
-  // The default title format ends in ${appName} — "code-server". The folder is
-  // already on the window above this bar, so the file name is the only part
-  // left worth showing. ${dirty} puts a dot in front of unsaved work.
+  // The default title format ends in ${appName} — "Visual Studio Code". The
+  // folder is already on the window above this bar, so the file name is the
+  // only part left worth showing. ${dirty} puts a dot in front of unsaved work.
   "window.title": "${dirty}${activeEditorShort}",
-  // wait why are we applying this?
   "editor.smoothScrolling": false,
   "workbench.list.smoothScrolling": false,
-  // huh?
   "terminal.integrated.smoothScrolling": false,
   "update.mode": "none",
   "telemetry.telemetryLevel": "off",
   "workbench.enableExperiments": false,
+  // code-server took --disable-workspace-trust; serve-web has no such flag, and
+  // a trust prompt over a folder the user just asked for is only in the way
+  "security.workspace.trust.enabled": false,
 };
 
 export const SEEDED_SETTINGS: Record<string, unknown> = {
@@ -314,6 +329,7 @@ export function applySettings(source: string): string {
 }
 
 export function installSettings(): boolean {
+  adoptServerLayout();
   const file = path.join(USER_DIR, "settings.json");
   let source = "";
   try {
@@ -404,6 +420,23 @@ export function foreignBindings(): Binding[] {
 
 export function installKeybindings(): boolean {
   return writeBindings(todeKeybindings() as Binding[], foreignBindings());
+}
+
+/** The bindings the workbench should end up with — the same list that goes into
+ * keybindings.json, minus what an extension cannot say.
+ *
+ * A workbench in a browser keeps its user keybindings in the browser, not in
+ * the server's data dir, so keybindings.json is tode's record of the intent and
+ * the bridge extension is what actually carries it in. Extensions contribute
+ * defaults, so removals ("-command") have nowhere to go and are dropped: a
+ * chord handed to the terminal keeps whatever the workbench binds it to. */
+export function liveBindings(): Binding[] {
+  const theirs = foreignBindings();
+  const mine = todeKeybindings() as Binding[];
+  const winners = [...overrideBindings(), ...claimBindings(), ...quitWinsBindings(theirs)];
+  return [...mine, ...theirs, ...winners].filter(
+    (entry) => !!entry.key && !!entry.command && !entry.command.startsWith("-"),
+  );
 }
 
 function quitWinsBindings(theirs: Binding[]): Binding[] {
