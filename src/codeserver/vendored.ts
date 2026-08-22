@@ -45,6 +45,40 @@ export function installedCodeServer(): string | null {
   return binAt(codeServerRoot());
 }
 
+export interface CodeServerInspection {
+  source: "override" | "pinned" | "missing" | "invalid";
+  version: string;
+  root: string;
+  binary: string;
+  valid: boolean;
+  reason?: string;
+}
+
+export interface CodeServerInspectionOptions {
+  version?: string;
+  override?: string | null;
+  root?: string;
+  exists?: (file: string) => boolean;
+}
+
+export function inspectCodeServer(options: CodeServerInspectionOptions = {}): CodeServerInspection {
+  const version = options.version ?? CODE_SERVER_VERSION;
+  const override = options.override === undefined ? process.env.TODE_CODE_SERVER ?? null : options.override;
+  const root = options.root ?? codeServerRoot(version);
+  const exists = options.exists ?? fs.existsSync;
+  const binary = override ?? path.join(root, "bin", "code-server");
+  const valid = exists(binary);
+
+  return {
+    source: valid ? (override ? "override" : "pinned") : override ? "invalid" : "missing",
+    version,
+    root,
+    binary,
+    valid,
+    ...(valid ? {} : { reason: "code-server binary is not present" }),
+  };
+}
+
 export function narrateFetch(label: string): (fraction: number) => void {
   let announced = false;
   let lastPercent = -1;
