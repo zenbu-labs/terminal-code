@@ -67,14 +67,15 @@ export default function Home() {
             <p className="mt-3 max-w-[560px] text-[13px] leading-[1.75] text-muted">
               terminal-code combines{" "}
               <a
-                href="https://github.com/coder/code-server"
+                href="https://github.com/microsoft/vscode"
                 target="_blank"
                 rel="noreferrer"
                 className="text-text2 underline decoration-border underline-offset-[3px] transition-colors hover:text-ok hover:decoration-ok/50"
               >
-                code-server
+                VS Code
               </a>{" "}
-              (VS Code in the browser) and{" "}
+              (served to the browser by its own{" "}
+              <span className="font-mono">code serve-web</span>) and{" "}
               <a
                 href="https://github.com/zenbu-labs/terminal-browser"
                 target="_blank"

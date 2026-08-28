@@ -1,4 +1,3 @@
-
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -166,12 +165,15 @@ export async function fetchVerified(
   fs.mkdirSync(path.dirname(tarball), { recursive: true });
   const hash = crypto.createHash("sha256");
   const file = fs.createWriteStream(tarball);
+  // a release table carries the size; a download named by a service may only
+  // announce it in the response, and without either there is no percentage
+  const total = size || Number(response.headers.get("content-length")) || 0;
   let read = 0;
   for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
     hash.update(chunk);
     read += chunk.byteLength;
     if (!file.write(chunk)) await new Promise<void>((resolve) => file.once("drain", () => resolve()));
-    if (size) onProgress?.(read / size);
+    if (total) onProgress?.(read / total);
   }
   await new Promise<void>((resolve, reject) => {
     file.end((error?: Error | null) => (error ? reject(error) : resolve()));

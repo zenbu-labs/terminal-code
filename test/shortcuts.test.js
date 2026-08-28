@@ -217,17 +217,18 @@ test("chords canonicalise across spellings, and sequences count as their opener"
   assert.equal(canonicalChord("cmd+k cmd+s"), "cmd+k");
 });
 
-test("the vendored keymap was generated from the pinned code-server", () => {
-  // regenerate with scripts/generate-keymaps.js when the pin moves
-  const { CODE_SERVER_VERSION } = require("../dist/codeserver/vendored.js");
+test("the vendored keymap says which VS Code it was dumped from", () => {
+  // regenerate with scripts/generate-keymaps.js; the served VS Code moves with
+  // stable, so the record is provenance rather than a pin to check against
   for (const platform of ["mac", "linux"]) {
     const file = path.join(__dirname, "..", "assets", "keymaps", `vscode-${platform}.json`);
     const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-    assert.equal(
-      parsed.codeServer,
-      CODE_SERVER_VERSION,
-      `assets/keymaps/vscode-${platform}.json is from code-server ${parsed.codeServer}, the pin is ${CODE_SERVER_VERSION}`,
+    assert.match(
+      parsed.vscode ?? "",
+      /^\d+\.\d+\.\d+$/,
+      `assets/keymaps/vscode-${platform}.json does not name the VS Code it came from`,
     );
+    assert.equal(parsed.platform, platform);
     assert.ok(parsed.bindings.length > 500, "a real keymap has hundreds of bindings");
   }
 });
@@ -411,6 +412,49 @@ test("derived editor decisions write keybindings through the command on the deci
     });
     const bindings = store.fallbackBindings();
     assert.deepEqual(bindings, [{ key: "ctrl+alt+f", command: "actions.find", when: "!terminalFocus" }]);
+  } finally {
+    process.env.XDG_DATA_HOME = prev.XDG_DATA_HOME;
+    process.env.XDG_STATE_HOME = prev.XDG_STATE_HOME;
+    fs.rmSync(home, { recursive: true, force: true });
+    for (const key of Object.keys(require.cache)) delete require.cache[key];
+  }
+});
+
+test("the bridge extension carries the bindings the browser cannot read off disk", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "tode-live-"));
+  const prev = { XDG_DATA_HOME: process.env.XDG_DATA_HOME, XDG_STATE_HOME: process.env.XDG_STATE_HOME };
+  process.env.XDG_DATA_HOME = path.join(home, "share");
+  process.env.XDG_STATE_HOME = path.join(home, "state");
+  try {
+    const store = freshRequire("../dist/shortcuts/store.js");
+    store.saveDecisions({
+      version: 1,
+      terminal: "ghostty",
+      choices: {
+        "cmd+shift+z": { choice: "editor", key: "ctrl+shift+z", command: "redo" },
+        "claim:ctrl+k": { choice: "terminal", action: "workbench.action.terminal.clear" },
+      },
+    });
+    const profile = require("../dist/profile.js");
+    const { installBridge, BRIDGE_DIR } = require("../dist/bridge.js");
+    // a binding of the user's own, which tode keeps
+    fs.mkdirSync(profile.USER_DIR, { recursive: true });
+    fs.writeFileSync(
+      path.join(profile.USER_DIR, "keybindings.json"),
+      JSON.stringify([{ key: "alt+g", command: "acme.go" }]),
+    );
+    installBridge(["tode"]);
+    const manifest = JSON.parse(fs.readFileSync(path.join(BRIDGE_DIR, "package.json"), "utf8"));
+    const bindings = manifest.contributes.keybindings;
+    const has = (key, command) => bindings.some((b) => b.key === key && b.command === command);
+    assert.ok(has(store.QUIT_CHORD, store.QUIT_COMMAND), "quit still comes with the bridge");
+    assert.ok(has("ctrl+shift+z", "redo"), "a decision reaches the workbench");
+    assert.ok(has("alt+g", "acme.go"), "and so does the user's own binding");
+    // an extension contributes defaults, so it has no way to say "unbind this"
+    assert.ok(
+      !bindings.some((b) => b.command.startsWith("-")),
+      "removals cannot be contributed, so they are left out",
+    );
   } finally {
     process.env.XDG_DATA_HOME = prev.XDG_DATA_HOME;
     process.env.XDG_STATE_HOME = prev.XDG_STATE_HOME;

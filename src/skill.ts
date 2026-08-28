@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { BRIDGE_DIR, STARTUP_OPEN_FILE } from "./bridge";
 import { ipcSocketDir } from "./browserglue";
-import { CSS_FILE, PORT_FILE, STATE_FILE, currentServer, origin } from "./codeserver/server";
-import { CODE_SERVER_VERSION, codeServerRoot, installedCodeServer } from "./codeserver/vendored";
+import { CSS_FILE, PORT_FILE, SERVER_LOG, STATE_FILE, currentServer, origin } from "./codeserver/server";
+import { CLI_DATA_DIR, CLI_DIR, installedVscodeCli, installedVscodeServer } from "./codeserver/vendored";
 import {
   EXTENSIONS_DIR,
   KEYBINDINGS_RECORD,
@@ -22,7 +22,6 @@ import {
   CACHE_DIR,
   DATA_DIR,
   INSTALL_ROOT,
-  LOGS_DIR,
   RUNTIME_DIR,
   STATE_DIR,
   VENDOR_DIR,
@@ -73,10 +72,11 @@ export async function skillText(): Promise<string> {
 
   const server = await currentServer();
   const daemon = server
-    ? `up ${Math.round((Date.now() - server.startedAt) / 60000)}m — code-server pid ${server.pid} on 127.0.0.1:${server.port}, ` +
-    `injector pid ${server.injectorPid}; windows load ${origin(server)} (always the injector, never code-server directly)`
+    ? `up ${Math.round((Date.now() - server.startedAt) / 60000)}m — serve-web pid ${server.pid} on 127.0.0.1:${server.port}, ` +
+    `injector pid ${server.injectorPid}; windows load ${origin(server)} (always the injector, never the server directly)`
     : "not running — the next `tode` starts it";
-  const codeServer = installedCodeServer();
+  const cli = installedVscodeCli();
+  const vscodeServer = installedVscodeServer();
 
   const sockets = listDir(ipcSocketDir()).filter((entry) => entry.endsWith(".sock"));
   const inWindow = process.env.TODE_IPC;
@@ -91,13 +91,13 @@ export async function skillText(): Promise<string> {
 
   return `---
 name: tode
-description: Working knowledge of this machine's tode install (the terminal code editor). Where its code-server profile, extensions, keybindings, themes, terminal shortcut overrides, logs and daemon state live, which files are safe to edit and which are regenerated, and how to reach running windows. Regenerate with \`tode --skill\` — every path is resolved live and the state section reflects the moment it ran.
+description: Working knowledge of this machine's tode install (the terminal code editor). Where its VS Code profile, extensions, keybindings, themes, terminal shortcut overrides, logs and daemon state live, which files are safe to edit and which are regenerated, and how to reach running windows. Regenerate with \`tode --skill\` — every path is resolved live and the state section reflects the moment it ran.
 ---
 
 # tode
 
-tode is a code editor that runs in the terminal: one warm code-server serves
-the VS Code workbench, an injecting proxy sits in front of it, and
+tode is a code editor that runs in the terminal: one warm \`code serve-web\`
+serves the real VS Code workbench, an injecting proxy sits in front of it, and
 terminal-browser draws each window as a terminal pane. Everything below was
 resolved on this machine when \`tode --skill\` ran — env overrides are already
 applied, and the state section is live. Re-run it rather than trusting a copy.
@@ -107,7 +107,8 @@ applied, and the state section is live. Re-run it rather than trusting a copy.
 - install root: ${INSTALL_ROOT} — ${install}
 - shim: ${shim} ${fs.existsSync(shim) ? "(present)" : "(absent — run installs go through node directly)"}
 - terminal-browser pin ${PINNED_VERSION}: ${runtimeSources()}
-- code-server ${CODE_SERVER_VERSION}: ${codeServer ?? `not fetched yet — the first open puts it under ${codeServerRoot()}`}
+- VS Code cli: ${cli ?? `not fetched yet — the first open puts it under ${CLI_DIR}`}
+- VS Code server: ${vscodeServer ?? `not fetched yet — serve-web downloads it under ${path.join(CLI_DATA_DIR, "serve-web")} on the first window`}
 - daemon: ${daemon}
 - open windows: ${sockets.length} socket(s) in ${ipcSocketDir()}${sockets.length ? ` — ${sockets.join(", ")}` : ""}
 - this shell ${inWindow ? `is inside a tode window (TODE_IPC=${inWindow})` : "is not inside a tode window (no TODE_IPC)"}
@@ -120,6 +121,13 @@ There is exactly one profile, under ${VSCODE_DIR}. Flags like --profile and
 --user-data-dir are deliberately swallowed; every window and every extension
 operation uses this one.
 
+A workbench in a browser keeps its user data in the browser, not in the
+server's data dir, so these files are tode's record of the intent and two
+carriers take them the rest of the way: settings ride in on the workbench page
+as configuration defaults (the injector reads settings.json on every load, so a
+reload is enough), and keybindings ride in on the bridge extension. Anything
+set from inside the editor still wins over both, and lives in the browser.
+
 - ${path.join(USER_DIR, "settings.json")} — live settings. tode owns these keys
   and rewrites them on every open (edits to them are lost):
   ${Object.keys(SETTINGS).join(", ")}.
@@ -128,13 +136,14 @@ operation uses this one.
   Every other key is untouched — add or change freely.
 - ${path.join(USER_DIR, "keybindings.json")} — safe to edit. tode replaces only
   the entries it wrote last time (recorded in ${KEYBINDINGS_RECORD}) and
-  carries everything else through.
+  carries everything else through. An extension can only add bindings, so a
+  removal ("-command") is recorded here but never reaches the workbench.
 - ${path.join(USER_DIR, "snippets")} and tasks.json — plain vscode files, never
   touched after an import.
 - ${EXTENSIONS_DIR} — the extensions tree plus its extensions.json registry.
   Manage with \`tode --install-extension <id|vsix>\`, \`--uninstall-extension\`,
-  \`--list-extensions\` (these force the right dirs; a bare code-server call
-  would land in the wrong profile). Two entries are generated by tode itself
+  \`--list-extensions\` (these run the downloaded VS Code server against the
+  right dirs; a bare \`code\` call would look for a desktop install). Two entries are generated by tode itself
   and rewritten on every open, so never hand-edit them: ${path.basename(BRIDGE_DIR)}
   (the IPC bridge) and ${THEME_EXTENSION_ID}-<fingerprint> (the terminal theme).
 - an open window picks extension changes up on its next reload.
@@ -176,18 +185,20 @@ ${STARTUP_OPEN_FILE} is a one-shot marker with the parts of an open the url cann
 
 ## Daemon and processes
 
-- ${STATE_FILE} — pids and ports of code-server and the injector; treat as
+- ${STATE_FILE} — pids and ports of the VS Code server and the injector; treat as
   read-only, \`tode --shutdown\` removes it properly.
 - ${PORT_FILE} — the injector's sticky port, reused while free so saved
   workspaces and the chromium cache stay valid.
-- ${path.join(LOGS_DIR, "code-server.log")} — combined code-server + injector log, append-only.
-- code-server runs with --auth none on 127.0.0.1, user-data ${path.join(VSCODE_DIR, "user-data")},
-  extensions ${EXTENSIONS_DIR}.
+- ${SERVER_LOG} — combined server + injector log, append-only.
+- the workbench is served by \`code serve-web --without-connection-token\` on
+  127.0.0.1, --server-data-dir ${VSCODE_DIR} (so user data ${path.join(VSCODE_DIR, "data")},
+  extensions ${EXTENSIONS_DIR}) and --cli-data-dir ${CLI_DATA_DIR}.
 
 ## Homes on disk
 
-- data ${DATA_DIR} — profile, theme, generated scripts, fetched code-server
-  (${path.join(DATA_DIR, "code-server")}) and terminal-browser trees (${RUNTIME_DIR})
+- data ${DATA_DIR} — profile, theme, generated scripts, the fetched VS Code cli
+  (${CLI_DIR}), the servers it downloads (${CLI_DATA_DIR}) and terminal-browser
+  trees (${RUNTIME_DIR})
 - state ${STATE_DIR} — daemon state, logs, ipc sockets, install receipt (install.json)
 - cache ${CACHE_DIR} — converted app icons and the browser's cache
 - terminal-browser gets its own homes so the user's are untouched:
@@ -200,7 +211,8 @@ ${STARTUP_OPEN_FILE} is a one-shot marker with the parts of an open the url cann
 
 - TODE_IPC — set inside tode windows; the window's socket
 - TODE_INSTALL_ROOT — overrides the install tree
-- TODE_CODE_SERVER — use your own code-server binary
+- TODE_VSCODE_CLI — use your own VS Code \`code\` cli binary
+- TODE_VSCODE_UPDATE_ORIGIN — where the cli is looked up and downloaded from
 - TODE_TERMINAL_BROWSER_BIN — use your own terminal-browser
 - TODE_RELEASE_ORIGIN — where upgrades and runtime downloads come from
 - TODE_BROWSER_DATA/_STATE/_CACHE/_RUN/_APPDATA — move the browser homes

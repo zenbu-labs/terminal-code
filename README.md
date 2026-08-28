@@ -56,7 +56,7 @@ Commands, each as the first argument:
 
 ### How does it work?
 
-terminal-code combines [terminal-browser](https://github.com/zenbu-labs/terminal-browser) (a browser in the terminal) and [code-server](https://github.com/coder/code-server) (VS Code in the browser) to bring VS Code to the terminal. You should look into these projects for more details!
+terminal-code combines [terminal-browser](https://github.com/zenbu-labs/terminal-browser) (a browser in the terminal) and [VS Code](https://github.com/microsoft/vscode)'s own web server — the `code serve-web` that ships with the official `code` CLI — to bring the real VS Code to the terminal. You should look into these projects for more details!
 
 
 
@@ -65,7 +65,6 @@ terminal-code combines [terminal-browser](https://github.com/zenbu-labs/terminal
 Your terminal and terminal-code will likely conflict on important shortcuts, meaning sometimes terminal-code will never even receive your key press. To resolve
 shortcut conflicts you can run `tode --shortcut-setup`, and you will be placed into an interactive wizard that lets you change terminal or terminal-code shortcuts
 so they no longer conflict
-
 
 
 ### SSH
