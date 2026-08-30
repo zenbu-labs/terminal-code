@@ -224,7 +224,7 @@ export function registerThemeExtension(dir?: string): void {
     const parsed = JSON.parse(fs.readFileSync(manifest, "utf8"));
     if (Array.isArray(parsed)) listed = parsed;
   } catch {
-    return;
+    if (fs.existsSync(manifest)) return;
   }
   const folder = path.basename(themeDir);
   const entry: ExtensionEntry = {
@@ -235,7 +235,7 @@ export function registerThemeExtension(dir?: string): void {
     metadata: { isApplicationScoped: false, isMachineScoped: false, installedTimestamp: 0 },
   };
   const without = listed.filter((item) => item.identifier?.id !== entry.identifier.id);
-  fs.writeFileSync(manifest, `${JSON.stringify([...without, entry], null, 2)}\n`);
+  writeIfChanged(manifest, `${JSON.stringify([...without, entry], null, 2)}\n`);
 }
 
 const FONT_STACK = `"${FONT_FAMILY}", ${FONT_FALLBACKS}`;
@@ -346,6 +346,26 @@ export interface Binding {
 }
 
 const KEYBINDINGS_FILE = path.join(USER_DIR, "keybindings.json");
+
+export interface ManagedProfilePaths {
+  font: string;
+  css: string;
+  liveTheme: string;
+  settings: string;
+  keybindingsRecord: string;
+  extensionsRegistry: string;
+}
+
+export function managedProfilePaths(): ManagedProfilePaths {
+  return {
+    font: path.join(userFontsDir(), FONT_FILE),
+    css: CSS_FILE,
+    liveTheme: LIVE_THEME_FILE,
+    settings: path.join(USER_DIR, "settings.json"),
+    keybindingsRecord: KEYBINDINGS_RECORD,
+    extensionsRegistry: path.join(EXTENSIONS_DIR, "extensions.json"),
+  };
+}
 export const KEYBINDINGS_RECORD = path.join(DATA_DIR, "keybindings.tode.json");
 
 function sameBinding(a: Binding, b: Binding): boolean {
@@ -425,11 +445,15 @@ function writeBindings(mine: Binding[], theirs: Binding[]): boolean {
   const winners = [...overrideBindings(), ...claimBindings(), ...quitWinsBindings(theirs)];
   fs.mkdirSync(USER_DIR, { recursive: true });
   fs.mkdirSync(path.dirname(KEYBINDINGS_RECORD), { recursive: true });
-  fs.writeFileSync(KEYBINDINGS_RECORD, `${JSON.stringify([...mine, ...winners], null, 2)}\n`);
-  return writeIfChanged(
+  const recordChanged = writeIfChanged(
+    KEYBINDINGS_RECORD,
+    `${JSON.stringify([...mine, ...winners], null, 2)}\n`,
+  );
+  const userChanged = writeIfChanged(
     KEYBINDINGS_FILE,
     `// \n${JSON.stringify([...mine, ...theirs, ...winners], null, 2)}\n`,
   );
+  return recordChanged || userChanged;
 }
 
 export function mergeKeybindings(theirs: Binding[]): number {

@@ -123,7 +123,7 @@ export function registerBridge(): void {
     const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
     if (Array.isArray(parsed)) listed = parsed;
   } catch {
-    return;
+    if (fs.existsSync(file)) return;
   }
   const entry: ExtensionEntry = {
     identifier: { id: BRIDGE_ID },
@@ -133,5 +133,5 @@ export function registerBridge(): void {
     metadata: { isApplicationScoped: false, isMachineScoped: false, installedTimestamp: 0 },
   };
   const without = listed.filter((item) => item.identifier?.id !== BRIDGE_ID);
-  fs.writeFileSync(file, `${JSON.stringify([...without, entry], null, 2)}\n`);
+  writeIfChanged(file, `${JSON.stringify([...without, entry], null, 2)}\n`);
 }

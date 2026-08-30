@@ -4,6 +4,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { collectDoctorContext } from "./doctor/context";
+import { parseDoctorArgs } from "./doctor/command";
+import { runDoctor } from "./doctor/orchestrator";
+import { makeUsageReport, renderDoctorText, serializeDoctorJson } from "./doctor/report";
+
 import {
   CSS_FILE,
   codeServerBin,
@@ -105,6 +110,7 @@ function takeBool(args: string[], name: string): boolean {
 }
 
 const HELP = `Usage: tode [path...] [options]
+       tode doctor [--json] [--fix]
        tode --<command>
 
   tode                  Open the folder in the current working directory
@@ -129,6 +135,10 @@ Options:
   --ssh <user@host>     Run terminal-code on an ssh server
 
 Commands, each as the first argument:
+  doctor [--json] [--fix]
+                        Diagnose terminal-code; --json is parseable stdout,
+                        --fix may download verified runtimes, modify managed
+                        config, and start the owned local daemon
   --shortcut-setup      Resolve shortcut conflicts between terminal-code and the current terminal
   --timing              Profile terminal-code launch
   --import [editor]     Bring settings, keybindings, snippets and extensions
@@ -565,6 +575,23 @@ async function serveCommand(args: string[]): Promise<number> {
   return 0;
 }
 
+async function doctorCommand(args: string[]): Promise<number> {
+  const json = args.includes("--json");
+  const fix = args.includes("--fix");
+  const parsed = parseDoctorArgs(args);
+  if (parsed.kind === "usage-error") {
+    const report = makeUsageReport(collectDoctorContext(), { json, fix }, parsed.message);
+    if (json) process.stdout.write(serializeDoctorJson(report));
+    else process.stderr.write(renderDoctorText(report));
+    return 64;
+  }
+
+  const report = await runDoctor(parsed.options);
+  if (parsed.options.json) process.stdout.write(serializeDoctorJson(report));
+  else process.stdout.write(renderDoctorText(report));
+  return report.summary.exitCode;
+}
+
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   if (args[0] === "--version" || args[0] === "-v") {
@@ -582,6 +609,7 @@ async function main(): Promise<number> {
     process.stdout.write(HELP);
     return 0;
   }
+  if (args[0] === "doctor") return doctorCommand(args.slice(1));
   if (args[0] === "--shortcut-setup") {
     const rest = args.slice(1);
     const noBoot = takeBool(rest, "--no-boot");
