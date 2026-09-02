@@ -29,6 +29,14 @@ test("the preload forwards terminal themes to the main script", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(sent)), [{ type: "theme", colors: theme }]);
 });
 
+test("the preload resets stale browser zoom", () => {
+  const zoomFactors = [];
+  const sandbox = workbenchSandbox([], [], zoomFactors);
+  sandbox.window = { top: {} };
+  vm.runInNewContext(preloadSource({}), sandbox);
+  assert.deepEqual(zoomFactors, [1]);
+});
+
 // The timing flow runs on real timers; an unref'd wrapper keeps the preload's
 // long 30s fallback from holding the test process open.
 const timers = {
@@ -46,7 +54,7 @@ const timers = {
   clearTimeout,
 };
 
-function workbenchSandbox(sent, classes) {
+function workbenchSandbox(sent, classes, zoomFactors = []) {
   const sandbox = {
     // the pinned build's api is theme-only — no send. Everything bound for
     // the main script leaves over electron's ipc, required by the preload.
@@ -60,6 +68,7 @@ function workbenchSandbox(sent, classes) {
             sent.push(message);
           },
         },
+        webFrame: { setZoomFactor: (factor) => zoomFactors.push(factor) },
       };
     },
     document: { documentElement: { classList: { add: (c) => classes.push(c) } } },
