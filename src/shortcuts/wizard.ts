@@ -1,11 +1,10 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 import { builtinKeybindings, installKeybindings, readPalette, removalMasked } from "../profile";
 import type { TerminalPalette } from "../terminal/osc";
 import { DATA_DIR } from "../runtime/paths";
-import { resolveRuntimeWithProgress } from "../runtime/release";
+import { resolveRuntimeWithProgress, spawnRuntime } from "../runtime/release";
 import { extensionHolder, importedConflicts, importedHolder } from "./imported";
 import { wrap } from "./prompt";
 import { providerFor } from "./provider";
@@ -508,13 +507,9 @@ async function runManager(
     return opened.state;
   }
   const runtime = await resolveRuntimeWithProgress();
-  const child = spawn(
-    runtime.bin,
-    [
-      "open",
-      `http://127.0.0.1:${manager.port}`,
-      "--app-mode"
-    ],
+  const child = spawnRuntime(
+    runtime,
+    ["open", `http://127.0.0.1:${manager.port}`, "--app-mode"],
     { stdio: "inherit" },
   );
   void manager.done.then(() => {

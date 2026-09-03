@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -32,7 +32,7 @@ import {
   readPalette,
 } from "./profile";
 import { Pane, launchBrowser, registerSelf } from "./launch";
-import { resolveRuntime, resolveRuntimeWithProgress } from "./runtime/release";
+import { resolveRuntime, resolveRuntimeWithProgress, spawnRuntime } from "./runtime/release";
 import { INSTALL_ROOT } from "./runtime/paths";
 import { skillCommand } from "./skill";
 import { sshForward, sshOpen } from "./ssh";
@@ -457,7 +457,7 @@ async function shutdownCommand(): Promise<number> {
   const runtime = await resolveRuntime().catch(() => null);
   if (runtime) {
     await new Promise<void>((resolve) => {
-      const child = spawn(runtime.bin, ["shutdown"], { stdio: "ignore" });
+      const child = spawnRuntime(runtime, ["shutdown"], { stdio: "ignore" });
       child.on("error", () => resolve());
       child.on("exit", () => resolve());
     });

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { DEFAULT_INSTALL_ROOT, INSTALL_ROOT, STATE_DIR } from "./runtime/paths";
@@ -162,7 +163,7 @@ export async function upgrade(options: UpgradeOptions = {}): Promise<Outcome> {
   writeReceipt(build);
 
   const shim = path.join(
-    process.env.XDG_BIN_HOME ?? path.join(process.env.HOME ?? "", ".local", "bin"),
+    process.env.XDG_BIN_HOME ?? path.join(os.homedir(), ".local", "bin"),
     "tode",
   );
   const shipped = path.join(INSTALL_ROOT, "bin", "tode");
