@@ -6,7 +6,7 @@ import path from "node:path";
 
 import {
   CSS_FILE,
-  codeServerBin,
+  codeServerCommand,
   ensureServer,
   origin,
   stopServer,
@@ -325,9 +325,10 @@ function installExtensions(listFile: string): void {
 }
 
 function installedExtensions(): string[] {
+  const command = codeServerCommand();
   const result = spawnSync(
-    codeServerBin(),
-    ["--list-extensions", "--extensions-dir", EXTENSIONS_DIR, "--user-data-dir", path.join(VSCODE_DIR, "user-data")],
+    command.bin,
+    [...command.args, "--list-extensions", "--extensions-dir", EXTENSIONS_DIR, "--user-data-dir", path.join(VSCODE_DIR, "user-data")],
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   );
   if (result.status !== 0 || !result.stdout) return [];
@@ -335,9 +336,10 @@ function installedExtensions(): string[] {
 }
 
 function extensionCommand(args: string[], quiet = false): number {
+  const command = codeServerCommand();
   const result = spawnSync(
-    codeServerBin(),
-    [...args, "--extensions-dir", EXTENSIONS_DIR, "--user-data-dir", path.join(VSCODE_DIR, "user-data")],
+    command.bin,
+    [...command.args, ...args, "--extensions-dir", EXTENSIONS_DIR, "--user-data-dir", path.join(VSCODE_DIR, "user-data")],
     { stdio: quiet ? ["ignore", "inherit", "ignore"] : "inherit" },
   );
   return result.status ?? 1;

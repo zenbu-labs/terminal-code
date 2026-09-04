@@ -50,6 +50,30 @@ export function installedCodeServer(): string | null {
   return binAt(codeServerRoot());
 }
 
+/** How an installed code-server is actually run. */
+export interface CodeServerCommand {
+  bin: string;
+  args: string[];
+}
+
+/** The launcher lives at <root>/bin/code-server. TODE_CODE_SERVER may name
+ * either it or the release around it, so both are accepted. */
+function releaseRoot(installed: string): string {
+  if (fs.existsSync(installed) && fs.statSync(installed).isDirectory()) return installed;
+  return path.dirname(path.dirname(installed));
+}
+
+/** On unix the launcher is a shell script whose whole job is to exec the
+ * bundled node against the release root. Windows can spawn neither a shell
+ * script nor, since the argument-injection fix, a .cmd without a shell -- and a
+ * shell is the last thing to want around paths a user chose. So windows does
+ * that job itself: the same node, the same root, no launcher in between. */
+export function codeServerCommand(installed: string): CodeServerCommand {
+  if (process.platform !== "win32") return { bin: installed, args: [] };
+  const root = releaseRoot(installed);
+  return { bin: path.join(root, "lib", "node.exe"), args: [root] };
+}
+
 export function narrateFetch(label: string): (fraction: number) => void {
   let announced = false;
   let lastPercent = -1;
