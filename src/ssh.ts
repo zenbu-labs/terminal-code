@@ -99,7 +99,7 @@ fi
     "setup",
     `#!/bin/sh
 set -e
-./ensure
+sh ./ensure
 "$HOME/.local/bin/tode" --serve --prepare --palette "$(pwd)/palette.json" --import "$(pwd)/profile"
 `,
     true,
@@ -108,7 +108,7 @@ set -e
     "start",
     `#!/bin/sh
 set -e
-./ensure
+sh ./ensure
 here="$(pwd)"
 cd "$HOME"
 exec "$HOME/.local/bin/tode" --serve --palette "$here/palette.json"${
