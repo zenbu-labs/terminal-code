@@ -1,10 +1,11 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 import { writeBrowserScripts } from "./browserglue";
 import { EXTENSIONS_DIR, USER_DIR } from "./profile";
 import { STATE_DIR } from "./runtime/paths";
+import { spawnRuntime } from "./runtime/release";
 import type { Runtime } from "./runtime/release";
 import type { TerminalPalette } from "./terminal/osc";
 
@@ -35,7 +36,7 @@ export function sshOpen(
   ];
   if (options.split) argv.push("--split", options.split);
   if (options.size) argv.push("--size", options.size);
-  const child = spawn(runtime.bin, argv, { stdio: "inherit" });
+  const child = spawnRuntime(runtime, argv, { stdio: "inherit" });
   return new Promise<number>((resolve) => {
     child.on("error", (error) => {
       process.stderr.write(`could not start terminal-browser: ${error.message}\n`);
@@ -98,7 +99,7 @@ fi
     "setup",
     `#!/bin/sh
 set -e
-./ensure
+sh ./ensure
 "$HOME/.local/bin/tode" --serve --prepare --palette "$(pwd)/palette.json" --import "$(pwd)/profile"
 `,
     true,
@@ -107,7 +108,7 @@ set -e
     "start",
     `#!/bin/sh
 set -e
-./ensure
+sh ./ensure
 here="$(pwd)"
 cd "$HOME"
 exec "$HOME/.local/bin/tode" --serve --palette "$here/palette.json"${

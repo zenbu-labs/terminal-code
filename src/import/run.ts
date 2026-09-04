@@ -26,7 +26,7 @@ function copyTree(from: string, to: string): boolean {
   fs.rmSync(to, { recursive: true, force: true });
   try {
     // clones rather than copies on apfs, which matters for hundreds of megabytes
-    execFileSync("cp", ["-Rc", from, to], { stdio: "ignore" });
+    fs.cpSync(from, to, { recursive: true });
     return true;
   } catch {
     try {
