@@ -174,14 +174,24 @@ export function bridgeMain(ctx: BridgeCtx): void {
     return path.join(dir, `w${process.pid}-${Date.now()}.sock`);
   }
 
+  // Both branches below build a uri out of a path, and a uri path is not a
+  // windows path: forward slashes, and a drive letter behind a leading slash.
+  // Uri.file is the one that takes a native path, so it keeps the original.
+  // Kept local because this function is serialised into the extension whole
+  // and cannot reach anything it did not bring with it.
+  function uriPath(target: string): string {
+    const slashed = target.replaceAll("\\", "/");
+    return slashed.startsWith("/") ? slashed : `/${slashed}`;
+  }
+
   function workspaceUri(target: string): Uri {
     const folders = vscode.workspace.workspaceFolders;
-    if (folders && folders.length > 0) return folders[0].uri.with({ path: target });
+    if (folders && folders.length > 0) return folders[0].uri.with({ path: uriPath(target) });
     if (vscode.env.remoteAuthority) {
       return vscode.Uri.from({
         scheme: "vscode-remote",
         authority: vscode.env.remoteAuthority,
-        path: target,
+        path: uriPath(target),
       });
     }
     return vscode.Uri.file(target);
