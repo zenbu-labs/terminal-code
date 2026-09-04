@@ -17,6 +17,11 @@ import {
 } from "./runtime/paths";
 import { PINNED_VERSION } from "./runtime/release";
 import { ghosttyConfigDir, reloadGhostty, removeFreed } from "./shortcuts/backends/ghostty";
+import {
+  kittyConfigDir,
+  reloadKitty,
+  removeFreed as removeKittyFreed,
+} from "./shortcuts/backends/kitty";
 
 
 function confirm(question: string): Promise<boolean> {
@@ -109,6 +114,7 @@ export async function uninstallCommand(args: string[]): Promise<number> {
   }
 
   if (removeFreed(ghosttyConfigDir())) reloadGhostty();
+  if (removeKittyFreed(kittyConfigDir())) reloadKitty();
 
   removeFont();
 

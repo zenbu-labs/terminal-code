@@ -194,7 +194,7 @@ ${STARTUP_OPEN_FILE} is a one-shot marker with the parts of an open the url cann
   data ${BROWSER_HOME.data}, state ${BROWSER_HOME.state}, cache ${BROWSER_HOME.cache},
   chromium ${BROWSER_HOME.appData}
 - \`tode --uninstall\` removes all of the above plus the install root, shim,
-  font and ghostty overrides.
+  font and ghostty/kitty overrides.
 
 ## Environment variables
 
