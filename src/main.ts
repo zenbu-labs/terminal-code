@@ -218,7 +218,7 @@ async function openCommand(args: string[]): Promise<number> {
     .filter((folder, at, all) => all.indexOf(folder) === at);
 
   const here = adding || reuse;
-  const window = newWindow ? null : runningWindow();
+  const window = newWindow ? null : await runningWindow();
   const sendFolders = here ? folders : [];
   const opensAPane = folders.length > 0 && !here;
 

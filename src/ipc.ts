@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import net from "node:net";
+import path from "node:path";
 
 export interface OpenFile {
   path: string;
@@ -17,14 +18,53 @@ export interface OpenRequest {
   theme?: Record<string, unknown>;
 }
 
-export function runningWindow(): string | null {
-  const socket = process.env.TODE_IPC;
-  if (!socket) return null;
+/** Where a window listens, and the file in the ipc directory that says so.
+ *
+ * Windows cannot listen on a filesystem path, so there a window listens on a
+ * named pipe and the file holds its name. Everywhere else the file is the
+ * socket. Either way the directory lists one file per window. */
+export function windowAddress(dir: string, name: string): { endpoint: string; file: string } {
+  const file = path.join(dir, `${name}.sock`);
+  if (process.platform !== "win32") return { endpoint: file, file };
+  return { endpoint: String.raw`\\.\pipe\tode-ipc-${name}`, file };
+}
+
+/** The address behind a file the ipc directory listed. */
+export function endpointOf(file: string): string | null {
   try {
-    return fs.statSync(socket).isSocket() ? socket : null;
+    if (fs.statSync(file).isSocket()) return file;
   } catch {
     return null;
   }
+  try {
+    return fs.readFileSync(file, "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Whether anything is listening, asked by connecting.
+ *
+ * A named pipe leaves nothing on disk to look at, and a socket file outlives
+ * the window that made it, so the only answer either can give is an answer. */
+export function answers(endpoint: string, timeoutMs = 500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const connection = net.connect(endpoint);
+    const settle = (alive: boolean) => {
+      clearTimeout(timer);
+      connection.destroy();
+      resolve(alive);
+    };
+    const timer = setTimeout(() => settle(false), timeoutMs);
+    connection.on("connect", () => settle(true));
+    connection.on("error", () => settle(false));
+  });
+}
+
+export async function runningWindow(): Promise<string | null> {
+  const endpoint = process.env.TODE_IPC;
+  if (!endpoint) return null;
+  return (await answers(endpoint)) ? endpoint : null;
 }
 
 export function sendToExtension(socket: string, request: OpenRequest, timeoutMs = 4000): Promise<void> {

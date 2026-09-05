@@ -5,7 +5,7 @@ export function browserMain(ctx: MainCtx): void {
   const path = require("node:path") as typeof import("node:path");
   const { parseRawColors } = require(ctx.modules.livesync) as typeof import("../livesync");
   const { generateTheme } = require(ctx.modules.generate) as typeof import("../theme/generate");
-  const { sendToExtension: sendToWindow } = require(ctx.modules.ipc) as typeof import("../ipc");
+  const { sendToExtension: sendToWindow, endpointOf } = require(ctx.modules.ipc) as typeof import("../ipc");
   const { ipcMain } = require("electron") as {
     ipcMain: { on(channel: string, listener: (event: unknown, message: unknown) => void): void };
   };
@@ -31,12 +31,14 @@ export function browserMain(ctx: MainCtx): void {
     }
     for (const name of names) {
       if (!name.endsWith(".sock")) continue;
-      const socket = path.join(ctx.socketDir, name);
-      sendToWindow(socket, { files: [], folders: [], add: false, theme }).catch(
+      const file = path.join(ctx.socketDir, name);
+      const endpoint = endpointOf(file);
+      if (!endpoint) continue;
+      sendToWindow(endpoint, { files: [], folders: [], add: false, theme }).catch(
         (error: NodeJS.ErrnoException) => {
           if (error && (error.code === "ECONNREFUSED" || error.code === "ENOENT")) {
             try {
-              fs.rmSync(socket, { force: true });
+              fs.rmSync(file, { force: true });
             } catch { }
           }
         },
