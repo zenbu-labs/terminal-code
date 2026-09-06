@@ -265,8 +265,12 @@ test("the browser main script turns a colours message into a theme at every wind
       connection.end('{"ok":true}\n');
     });
   });
-  const sock = path.join(sockDir, "w1.sock");
-  await new Promise((r) => server.listen(sock, r));
+  // Stand in for a window the way the bridge does: listen where this platform
+  // can, and leave the file the directory listing finds.
+  const { windowAddress } = require("../dist/ipc.js");
+  const { endpoint, file } = windowAddress(sockDir, "w1");
+  await new Promise((r) => server.listen(endpoint, r));
+  if (file !== endpoint) fs.writeFileSync(file, `${endpoint}\n`);
   try {
     // the pinned build requires the module for its side effects; subscribing
     // to tode's ipc channel is that side effect

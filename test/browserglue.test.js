@@ -129,7 +129,9 @@ function loadMainScript(ctx, sendToWindow) {
   let onMessage = null;
   const sandbox = {
     require: (id) => {
-      if (id === IPC_STUB) return { sendToExtension: sendToWindow };
+      if (id === IPC_STUB) {
+        return { sendToExtension: sendToWindow, endpointOf: require("../dist/ipc.js").endpointOf };
+      }
       if (id === "electron") {
         return {
           ipcMain: {
@@ -157,9 +159,14 @@ const themeMessage = () => ({
 
 test("the main script themes every window socket", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tode-glue-"));
-  fs.writeFileSync(path.join(dir, "one.sock"), "");
-  fs.writeFileSync(path.join(dir, "two.sock"), "");
-  fs.writeFileSync(path.join(dir, "not-a-socket.txt"), "");
+  const window = (name) => {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, `${file}` + "\n");
+    return file;
+  };
+  window("one.sock");
+  window("two.sock");
+  window("not-a-socket.txt");
   const calls = [];
   const onMessage = loadMainScript(mainCtx(dir), (socket, request) => {
     calls.push({ socket, request });
@@ -182,7 +189,7 @@ test("the main script themes every window socket", () => {
 test("a dead socket is cleaned up after a refused send", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tode-glue-"));
   const gone = path.join(dir, "gone.sock");
-  fs.writeFileSync(gone, "");
+  fs.writeFileSync(gone, `${gone}` + "\n");
   const refused = Object.assign(new Error("refused"), { code: "ECONNREFUSED" });
   const onMessage = loadMainScript(mainCtx(dir), () => Promise.reject(refused));
   onMessage(themeMessage());

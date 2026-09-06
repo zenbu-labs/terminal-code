@@ -4,7 +4,14 @@ import net from "node:net";
 import path from "node:path";
 
 import { DATA_DIR, LOGS_DIR, STATE_DIR } from "../runtime/paths";
-import { CODE_SERVER_VERSION, ensureCodeServer, installedCodeServer, narrateFetch } from "./vendored";
+import {
+  CODE_SERVER_VERSION,
+  CodeServerCommand,
+  codeServerCommand as commandFor,
+  ensureCodeServer,
+  installedCodeServer,
+  narrateFetch,
+} from "./vendored";
 
 const VSCODE_DIR = path.join(DATA_DIR, "vscode");
 export const STATE_FILE = path.join(STATE_DIR, "server.json");
@@ -34,9 +41,9 @@ function fontAsset(): string {
   }
 }
 
-export function codeServerBin(): string {
+export function codeServerCommand(): CodeServerCommand {
   const found = installedCodeServer();
-  if (found) return found;
+  if (found) return commandFor(found);
   throw new Error(`code-server ${CODE_SERVER_VERSION} not found`);
 }
 
@@ -98,9 +105,9 @@ export async function currentServer(): Promise<ServerState | null> {
   return up && proxied ? state : null;
 }
 
-function serverVersion(bin: string): Promise<string> {
+function serverVersion(command: CodeServerCommand): Promise<string> {
   return new Promise((resolve) => {
-    execFile(bin, ["--version"], { encoding: "utf8" }, (error, stdout) => {
+    execFile(command.bin, [...command.args, "--version"], { encoding: "utf8" }, (error, stdout) => {
       resolve(error ? "unknown" : stdout.split("\n")[0].trim());
     });
   });
@@ -122,16 +129,17 @@ async function startServer(): Promise<ServerState> {
   const existing = await currentServer();
   if (existing) return existing;
 
-  const bin = await ensureCodeServer(narrateFetch(`code-server ${CODE_SERVER_VERSION}`));
+  const command = commandFor(await ensureCodeServer(narrateFetch(`code-server ${CODE_SERVER_VERSION}`)));
   // asked now, awaited after the injector is up — the version is a detail for
   // `tode daemon status`, not something the boot should stall on
-  const version = serverVersion(bin);
+  const version = serverVersion(command);
   const port = await freePort();
   fs.mkdirSync(LOGS_DIR, { recursive: true });
   const log = fs.openSync(path.join(LOGS_DIR, "code-server.log"), "a");
   const child = spawn(
-    bin,
+    command.bin,
     [
+      ...command.args,
       "--auth",
       "none",
       "--bind-addr",

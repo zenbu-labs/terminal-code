@@ -1,7 +1,9 @@
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { BROWSER_HOME, RUNTIME_DIR, VENDOR_DIR } from "./paths";
@@ -11,7 +13,7 @@ export const PINNED_VERSION = "v0.7.6";
 const RELEASE_ORIGIN = process.env.TODE_RELEASE_ORIGIN ?? "https://terminal-browser.sh/install";
 
 const SYSTEM_INSTALL = path.join(
-  process.env.XDG_DATA_HOME ?? path.join(process.env.HOME ?? "", ".local/share"),
+  process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local/share"),
   "terminal-browser",
   "app",
 );
@@ -36,9 +38,22 @@ const VENDORED = path.join(VENDOR_DIR, "terminal-browser");
 
 export interface Runtime {
   bin: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
   root: string;
   version: string;
   source: Source;
+}
+
+export function spawnRuntime(
+  runtime: Runtime,
+  argv: string[],
+  options: SpawnOptions = {},
+): ChildProcess {
+  return spawn(runtime.bin, [...runtime.args, ...argv], {
+    ...options,
+    env: { ...process.env, ...runtime.env, ...options.env },
+  });
 }
 
 export async function lookup(version: string): Promise<Release> {
@@ -75,11 +90,12 @@ function versionAt(root: string): string | null {
 }
 
 /** Where the electron binary lives inside a terminal-browser tree. macOS ships
- * an app bundle; linux ships the bare electron layout. */
+ * an app bundle; linux and windows ship the bare electron layout. */
 export function electronEntry(root: string): string {
-  return process.platform === "darwin"
-    ? path.join(root, "electron", "terminal-browser.app", "Contents", "MacOS", "terminal-browser")
-    : path.join(root, "electron", "electron");
+  if (process.platform === "darwin") {
+    return path.join(root, "electron", "terminal-browser.app", "Contents", "MacOS", "terminal-browser");
+  }
+  return path.join(root, "electron", process.platform === "win32" ? "electron.exe" : "electron");
 }
 
 function usable(root: string, version: string): boolean {
@@ -123,6 +139,33 @@ exec "$ROOT/${electron}" "$ROOT/cli/dist/main.js" "$@"
   return bin;
 }
 
+function browserEnv(root: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    TERMINAL_BROWSER_DIST_ROOT: root,
+    ELECTRON_RUN_AS_NODE: "1",
+    XDG_DATA_HOME: process.env.TODE_BROWSER_DATA ?? BROWSER_HOME.data,
+    XDG_STATE_HOME: process.env.TODE_BROWSER_STATE ?? BROWSER_HOME.state,
+    XDG_CACHE_HOME: process.env.TODE_BROWSER_CACHE ?? BROWSER_HOME.cache,
+    TERMINAL_BROWSER_APPDATA: process.env.TODE_BROWSER_APPDATA ?? BROWSER_HOME.appData,
+  };
+  if (process.env.TODE_BROWSER_RUN) env.XDG_RUNTIME_DIR = process.env.TODE_BROWSER_RUN;
+  return env;
+}
+
+// Nothing on windows can spawn a shell script, so instead of writing one the
+// browser is started directly and told the same things through its environment.
+function startedFrom(root: string, bin?: string): Pick<Runtime, "bin" | "args" | "env"> {
+  if (process.platform !== "win32") {
+    return { bin: bin ?? writeLauncher(root), args: [], env: {} };
+  }
+  for (const dir of Object.values(BROWSER_HOME)) fs.mkdirSync(dir, { recursive: true });
+  return {
+    bin: bin ?? electronEntry(root),
+    args: [path.join(root, "cli", "dist", "main.js")],
+    env: browserEnv(root),
+  };
+}
+
 export function unpack(tarball: string, root: string) {
   const staging = `${root}.unpacking`;
   fs.rmSync(staging, { recursive: true, force: true });
@@ -138,14 +181,10 @@ function cloneTree(from: string, to: string): boolean {
   fs.rmSync(staging, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(to), { recursive: true });
   try {
-    execFileSync("cp", ["-Rc", from, staging], { stdio: "ignore" });
+    fs.cpSync(from, staging, { recursive: true });
   } catch {
-    try {
-      execFileSync("cp", ["-R", from, staging], { stdio: "ignore" });
-    } catch {
-      fs.rmSync(staging, { recursive: true, force: true });
-      return false;
-    }
+    fs.rmSync(staging, { recursive: true, force: true });
+    return false;
   }
   fs.rmSync(to, { recursive: true, force: true });
   fs.renameSync(staging, to);
@@ -224,24 +263,36 @@ export async function resolveRuntime(options: ResolveOptions = {}): Promise<Runt
   if (override) {
     if (!fs.existsSync(override)) throw new Error(`TODE_TERMINAL_BROWSER_BIN is not there: ${override}`);
     const root = path.resolve(path.dirname(override), "..");
-    return { bin: override, root, version: versionAt(root) ?? "override", source: "override" };
+    return {
+      ...startedFrom(root, override),
+      root,
+      version: versionAt(root) ?? "override",
+      source: "override",
+    };
   }
 
   if (version === PINNED_VERSION && usable(VENDORED, version)) {
-    return { bin: writeLauncher(VENDORED), root: VENDORED, version, source: "vendored" };
+    return { ...startedFrom(VENDORED), root: VENDORED, version, source: "vendored" };
   }
 
   const root = rootFor(version);
   if (usable(root, version)) {
-    return { bin: writeLauncher(root), root, version, source: "pinned" };
+    return { ...startedFrom(root), root, version, source: "pinned" };
   }
 
   if (usable(SYSTEM_INSTALL, version)) {
     options.onProgress?.("cloning", 0);
     if (cloneTree(SYSTEM_INSTALL, root)) {
       options.onProgress?.("cloning", 1);
-      return { bin: writeLauncher(root), root, version, source: "cloned" };
+      return { ...startedFrom(root), root, version, source: "cloned" };
     }
+  }
+
+  if (process.platform === "win32") {
+    throw new Error(
+      "terminal-browser has no windows build to download yet — point " +
+        "TODE_TERMINAL_BROWSER_BIN at the electron binary inside one you already have",
+    );
   }
 
   const release = await lookup(version);
@@ -249,5 +300,5 @@ export async function resolveRuntime(options: ResolveOptions = {}): Promise<Runt
   unpack(tarball, root);
   fs.rmSync(tarball, { force: true });
   if (!usable(root, version)) throw new Error(`unpacked ${version} but it is missing pieces`);
-  return { bin: writeLauncher(root), root, version, source: "downloaded" };
+  return { ...startedFrom(root), root, version, source: "downloaded" };
 }

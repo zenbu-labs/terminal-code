@@ -164,24 +164,42 @@ export function bridgeMain(ctx: BridgeCtx): void {
     };
   }
 
-  function socketPath(): string {
+  // Windows cannot listen on a filesystem path, so there the window listens on
+  // a named pipe and the file in the ipc directory holds its name. Everywhere
+  // else the file is the socket. Kept local, and duplicated from ipc.ts, for
+  // the same reason uriPath below is: this function is serialised into the
+  // extension whole and cannot reach anything it did not bring with it.
+  function windowAddress(): { endpoint: string; file: string } {
     const stateHome =
       process.env.XDG_STATE_HOME && path.isAbsolute(process.env.XDG_STATE_HOME)
         ? process.env.XDG_STATE_HOME
         : path.join(os.homedir(), ".local", "state");
     const dir = path.join(stateHome, "tode", "ipc");
     fs.mkdirSync(dir, { recursive: true });
-    return path.join(dir, `w${process.pid}-${Date.now()}.sock`);
+    const name = `w${process.pid}-${Date.now()}`;
+    const file = path.join(dir, `${name}.sock`);
+    if (process.platform !== "win32") return { endpoint: file, file };
+    return { endpoint: String.raw`\\.\pipe\tode-ipc-${name}`, file };
+  }
+
+  // Both branches below build a uri out of a path, and a uri path is not a
+  // windows path: forward slashes, and a drive letter behind a leading slash.
+  // Uri.file is the one that takes a native path, so it keeps the original.
+  // Kept local because this function is serialised into the extension whole
+  // and cannot reach anything it did not bring with it.
+  function uriPath(target: string): string {
+    const slashed = target.replaceAll("\\", "/");
+    return slashed.startsWith("/") ? slashed : `/${slashed}`;
   }
 
   function workspaceUri(target: string): Uri {
     const folders = vscode.workspace.workspaceFolders;
-    if (folders && folders.length > 0) return folders[0].uri.with({ path: target });
+    if (folders && folders.length > 0) return folders[0].uri.with({ path: uriPath(target) });
     if (vscode.env.remoteAuthority) {
       return vscode.Uri.from({
         scheme: "vscode-remote",
         authority: vscode.env.remoteAuthority,
-        path: target,
+        path: uriPath(target),
       });
     }
     return vscode.Uri.file(target);
@@ -312,7 +330,7 @@ export function bridgeMain(ctx: BridgeCtx): void {
     const stopWatchingSettings = watchLiveTheme();
     context.subscriptions.push({ dispose: stopWatchingSettings });
 
-    const sock = socketPath();
+    const { endpoint, file } = windowAddress();
     const server = net.createServer((connection) => {
       let buffer = "";
       connection.on("data", (chunk) => {
@@ -342,9 +360,14 @@ export function bridgeMain(ctx: BridgeCtx): void {
       });
       connection.on("error", () => {});
     });
-    server.on("error", () => {});
-    server.listen(sock, () => {
-      context.environmentVariableCollection.replace("TODE_IPC", sock);
+    // Swallowing this is how the whole feature stayed dark on windows: the
+    // listen failed, nothing was said, and TODE_IPC was simply never set.
+    server.on("error", (error) => {
+      console.error(`tode: no window socket at ${endpoint}, so tode <file> cannot reach this window: ${error}`);
+    });
+    server.listen(endpoint, () => {
+      if (file !== endpoint) fs.writeFileSync(file, `${endpoint}\n`);
+      context.environmentVariableCollection.replace("TODE_IPC", endpoint);
     });
     context.subscriptions.push({
       dispose: () => {
@@ -352,7 +375,7 @@ export function bridgeMain(ctx: BridgeCtx): void {
           server.close();
         } catch {}
         try {
-          fs.rmSync(sock, { force: true });
+          fs.rmSync(file, { force: true });
         } catch {}
       },
     });

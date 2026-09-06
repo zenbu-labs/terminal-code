@@ -335,14 +335,14 @@ test("goto accepts file, file:line and file:line:column", () => {
   assert.deepEqual(parseGoto("/etc/hosts"), { path: "/etc/hosts" });
 });
 
-test("a window is only reused when its socket is really there", () => {
+test("a window is only reused when it answers", async () => {
   const { runningWindow } = require("../dist/ipc.js");
   const prev = process.env.TODE_IPC;
   try {
     delete process.env.TODE_IPC;
-    assert.equal(runningWindow(), null);
+    assert.equal(await runningWindow(), null);
     process.env.TODE_IPC = "/tmp/definitely-not-a-socket-xyz";
-    assert.equal(runningWindow(), null, "a missing socket must not be treated as a window");
+    assert.equal(await runningWindow(), null, "an address nothing listens on is not a window");
   } finally {
     if (prev === undefined) delete process.env.TODE_IPC;
     else process.env.TODE_IPC = prev;
@@ -354,8 +354,8 @@ test("open requests reach a listening window", async () => {
   const fs = require("node:fs");
   const os = require("node:os");
   const path = require("node:path");
-  const { sendToExtension } = require("../dist/ipc.js");
-  const sock = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tode-ipc-")), "w.sock");
+  const { sendToExtension, windowAddress } = require("../dist/ipc.js");
+  const { endpoint } = windowAddress(fs.mkdtempSync(path.join(os.tmpdir(), "tode-ipc-")), "w");
   const seen = [];
   const server = net.createServer((c) => {
     let buf = "";
@@ -366,9 +366,9 @@ test("open requests reach a listening window", async () => {
       c.end(JSON.stringify({ ok: true }) + "\n");
     });
   });
-  await new Promise((r) => server.listen(sock, r));
+  await new Promise((r) => server.listen(endpoint, r));
   try {
-    await sendToExtension(sock, { files: [{ path: "/a.ts", line: 3, column: 2 }], folders: [], add: false });
+    await sendToExtension(endpoint, { files: [{ path: "/a.ts", line: 3, column: 2 }], folders: [], add: false });
     assert.deepEqual(seen[0].files, [{ path: "/a.ts", line: 3, column: 2 }]);
   } finally {
     server.close();
@@ -380,13 +380,13 @@ test("a window that refuses is reported, not swallowed", async () => {
   const fs = require("node:fs");
   const os = require("node:os");
   const path = require("node:path");
-  const { sendToExtension } = require("../dist/ipc.js");
-  const sock = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tode-ipc-")), "w.sock");
+  const { sendToExtension, windowAddress } = require("../dist/ipc.js");
+  const { endpoint } = windowAddress(fs.mkdtempSync(path.join(os.tmpdir(), "tode-ipc-")), "refuses");
   const server = net.createServer((c) => c.end(JSON.stringify({ ok: false, error: "nope" }) + "\n"));
-  await new Promise((r) => server.listen(sock, r));
+  await new Promise((r) => server.listen(endpoint, r));
   try {
     await assert.rejects(
-      () => sendToExtension(sock, { files: [], folders: [], add: false }),
+      () => sendToExtension(endpoint, { files: [], folders: [], add: false }),
       /nope/,
     );
   } finally {

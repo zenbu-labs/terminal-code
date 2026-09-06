@@ -7,7 +7,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run -s build:pages",
-    "build:pages": "TODE_PAGE=shortcuts vite build && TODE_PAGE=import vite build",
+    "build:pages": "node scripts/build-pages.mjs",
     "dist": "bash scripts/dist.sh",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/pages/tsconfig.json",
     "test": "npm run -s build && node --test \"test/*.test.js\""

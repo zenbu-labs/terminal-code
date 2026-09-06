@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -6,6 +5,7 @@ import path from "node:path";
 
 import { writeBrowserScripts } from "./browserglue";
 import { CSS_FILE } from "./codeserver/server";
+import { spawnRuntime } from "./runtime/release";
 import type { Runtime } from "./runtime/release";
 import type { TerminalPalette } from "./terminal/osc";
 
@@ -34,8 +34,8 @@ export function registerSelf(runtime: Runtime): void {
   );
   if (!fs.existsSync(bin)) return;
   try {
-    const child = spawn(
-      runtime.bin,
+    const child = spawnRuntime(
+      runtime,
       ["register-app", "--name", APP_NAME, "--id", APP_ID, "--bin", bin, "--args", "."],
       { stdio: "ignore", detached: true },
     );
@@ -65,7 +65,7 @@ export class Pane {
         JSON.stringify({ spawnedAt: Date.now(), stages: this.options.stages ?? [] }),
       );
     } catch { }
-    const child = spawn(this.runtime.bin, ["open", ...browserArgv(url, this.options)], {
+    const child = spawnRuntime(this.runtime, ["open", ...browserArgv(url, this.options)], {
       stdio: "inherit",
     });
     this.child = child;

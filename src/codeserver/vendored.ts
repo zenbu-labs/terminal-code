@@ -50,6 +50,38 @@ export function installedCodeServer(): string | null {
   return binAt(codeServerRoot());
 }
 
+/** How an installed code-server is actually run. */
+export interface CodeServerCommand {
+  bin: string;
+  args: string[];
+}
+
+/** The launcher lives at <root>/bin/code-server. TODE_CODE_SERVER may name
+ * either it or the release around it, so both are accepted. */
+function releaseRoot(installed: string): string {
+  if (fs.existsSync(installed) && fs.statSync(installed).isDirectory()) return installed;
+  return path.dirname(path.dirname(installed));
+}
+
+/** On unix the launcher is a shell script whose whole job is to exec a node
+ * against the release root. Windows can spawn neither a shell script nor, since
+ * the argument-injection fix, a .cmd without a shell -- and a shell is the last
+ * thing to want around paths a user chose. So windows does that job itself: the
+ * release root, no launcher in between.
+ *
+ * The node it uses is the one tode is already running under, not the one beside
+ * the release, and that is the whole point. Both are node 24. The difference is
+ * the subsystem: the bundled node.exe is a console program, and a detached
+ * console program started by a window-owning parent is given a console of its
+ * own -- an empty terminal window beside the real one, which is what a user
+ * sees. Electron is a gui program and is given none. windowsHide does not help
+ * here; it is ignored once detached is set, which was measured rather than
+ * assumed. The injector next door has always been started this way. */
+export function codeServerCommand(installed: string): CodeServerCommand {
+  if (process.platform !== "win32") return { bin: installed, args: [] };
+  return { bin: process.execPath, args: [releaseRoot(installed)] };
+}
+
 export function narrateFetch(label: string): (fraction: number) => void {
   let announced = false;
   let lastPercent = -1;
