@@ -4,9 +4,11 @@ import type { PreloadCtx, ThemeMessage, TimingMessage } from "./ctx";
 declare const terminalBrowser: TerminalBrowserApi;
 
 export function preloadMain(_ctx: PreloadCtx): void {
-  const { ipcRenderer } = require("electron") as {
+  const { ipcRenderer, webFrame } = require("electron") as {
     ipcRenderer: { send(channel: string, message: unknown): void };
+    webFrame: { setZoomFactor(factor: number): void };
   };
+  webFrame.setZoomFactor(1);
   const deliver = (message: unknown) => ipcRenderer.send("tode:message", message);
 
   terminalBrowser.onTheme((theme) => {
