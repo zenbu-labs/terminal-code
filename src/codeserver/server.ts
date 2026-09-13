@@ -48,6 +48,10 @@ function readState(): ServerState | null {
   }
 }
 
+export function readServerState(): ServerState | null {
+  return readState();
+}
+
 function writeState(state: ServerState) {
   fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
   fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);

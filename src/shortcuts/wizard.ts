@@ -40,7 +40,11 @@ export function normalizeChord(input: string): string | null {
   return [...MODS.filter((mod) => mods.includes(mod)), key].join("+");
 }
 
-function applyDecisions(provider: ShortcutProvider, conflicts: ProviderConflict[], choices: Record<string, Decision>): void {
+function applyDecisions(
+  provider: ShortcutProvider,
+  conflicts: ProviderConflict[],
+  choices: Record<string, Decision>,
+): { configPath: string; keybindingsChanged: boolean } {
   const moves = conflicts
     .filter((conflict) => choices[conflict.editorId]?.choice === "terminal")
     .map((conflict) => {
@@ -55,9 +59,23 @@ function applyDecisions(provider: ShortcutProvider, conflicts: ProviderConflict[
     const chord = named === -1 ? rest : rest.slice(0, named);
     moves.push({ trigger: provider.trigger(chord), to: decision.key, action: decision.action });
   }
-  provider.apply(moves);
+  const configPath = provider.apply(moves);
   saveDecisions({ version: 1, terminal: provider.id, choices });
-  installKeybindings();
+  const keybindingsChanged = installKeybindings();
+  return { configPath, keybindingsChanged };
+}
+
+export function applyRecordedDecisions(
+  provider: ShortcutProvider,
+  conflicts: ProviderConflict[],
+  choices: Record<string, Decision>,
+): { configPath: string; keybindingsChanged: boolean; reloadedLive: boolean; reloadHint: string } {
+  const applied = applyDecisions(provider, conflicts, choices);
+  return {
+    ...applied,
+    reloadedLive: provider.onApplied(),
+    reloadHint: provider.reloadHint(),
+  };
 }
 
 function say(text: string, style: (line: string) => string = (line) => line): void {

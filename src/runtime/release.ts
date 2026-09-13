@@ -66,6 +66,25 @@ export async function lookup(version: string): Promise<Release> {
   };
 }
 
+export interface RuntimeInspection {
+  source: Source | "missing" | "invalid";
+  version: string | null;
+  root: string;
+  binary: string | null;
+  valid: boolean;
+  reason?: string;
+}
+
+export interface RuntimeInspectionOptions {
+  version?: string;
+  override?: string | null;
+  vendoredRoot?: string;
+  pinnedRoot?: string;
+  systemRoot?: string;
+  exists?: (file: string) => boolean;
+  readVersion?: (root: string) => string | null;
+}
+
 function versionAt(root: string): string | null {
   try {
     return fs.readFileSync(path.join(root, "VERSION"), "utf8").trim() || null;
@@ -82,13 +101,76 @@ export function electronEntry(root: string): string {
     : path.join(root, "electron", "electron");
 }
 
-function usable(root: string, version: string): boolean {
+function runtimeUsable(
+  root: string,
+  version: string,
+  exists: (file: string) => boolean,
+  readVersion: (root: string) => string | null,
+): boolean {
   return (
-    versionAt(root) === version &&
-    fs.existsSync(path.join(root, "cli", "dist", "main.js")) &&
-    fs.existsSync(electronEntry(root))
+    readVersion(root) === version &&
+    exists(path.join(root, "cli", "dist", "main.js")) &&
+    exists(electronEntry(root))
   );
 }
+
+export function inspectRuntime(options: RuntimeInspectionOptions = {}): RuntimeInspection {
+  const version = options.version ?? PINNED_VERSION;
+  const exists = options.exists ?? fs.existsSync;
+  const readVersion = options.readVersion ?? versionAt;
+  const override = options.override === undefined ? process.env.TODE_TERMINAL_BROWSER_BIN ?? null : options.override;
+  const vendoredRoot = options.vendoredRoot ?? VENDORED;
+  const pinnedRoot = options.pinnedRoot ?? rootFor(version);
+  const systemRoot = options.systemRoot ?? SYSTEM_INSTALL;
+
+  if (override) {
+    const root = path.resolve(path.dirname(override), "..");
+    const valid = exists(override);
+    return {
+      source: valid ? "override" : "invalid",
+      version: valid ? readVersion(root) ?? "override" : null,
+      root,
+      binary: override,
+      valid,
+      ...(valid ? {} : { reason: "TODE_TERMINAL_BROWSER_BIN does not exist" }),
+    };
+  }
+
+  const candidates: { source: Source; root: string }[] = [
+    ...(version === PINNED_VERSION ? [{ source: "vendored" as const, root: vendoredRoot }] : []),
+    { source: "pinned", root: pinnedRoot },
+    { source: "cloned", root: systemRoot },
+  ];
+  let invalidRoot: string | null = null;
+
+  for (const candidate of candidates) {
+    if (runtimeUsable(candidate.root, version, exists, readVersion)) {
+      return {
+        source: candidate.source,
+        version,
+        root: candidate.root,
+        binary: path.join(candidate.root, "bin", "terminal-browser"),
+        valid: true,
+      };
+    }
+    if (readVersion(candidate.root) !== null) invalidRoot ??= candidate.root;
+  }
+
+  const root = invalidRoot ?? pinnedRoot;
+  return {
+    source: invalidRoot ? "invalid" : "missing",
+    version: readVersion(root),
+    root,
+    binary: path.join(root, "bin", "terminal-browser"),
+    valid: false,
+    reason: invalidRoot ? "runtime is missing a required executable" : "runtime is not installed",
+  };
+}
+
+function usable(root: string, version: string): boolean {
+  return runtimeUsable(root, version, fs.existsSync, versionAt);
+}
+
 
 function rootFor(version: string): string {
   return path.join(RUNTIME_DIR, "terminal-browser", version);

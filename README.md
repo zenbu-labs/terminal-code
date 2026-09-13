@@ -60,6 +60,14 @@ terminal-code combines [terminal-browser](https://github.com/zenbu-labs/terminal
 
 
 
+### Doctor
+
+Use `tode doctor --json` for a read-only, machine-readable diagnosis. It writes exactly one JSON document to stdout; progress and diagnostics stay on stderr.
+
+Use `tode doctor --json --fix` to repair terminal-code-managed state. The repair pass may download checksum-verified pinned runtimes, update terminal-code-owned profile/shortcut files, and start the owned localhost code-server/injector daemon. It never guesses an unresolved shortcut conflict: those remain unchanged, are reported as `needs_input`, and return exit code `2`.
+
+Exit codes are `0` for healthy or warning-only results, `1` for a failed check/repair or remaining error, `2` for required user input, and `64` for invalid doctor options. A second `--fix` run is intended to be idempotent.
+
 ### Shortcuts
 
 Your terminal and terminal-code will likely conflict on important shortcuts, meaning sometimes terminal-code will never even receive your key press. To resolve
