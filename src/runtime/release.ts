@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fetchTrusting } from "./net";
 import { BROWSER_HOME, RUNTIME_DIR, VENDOR_DIR } from "./paths";
 
 export const PINNED_VERSION = "v0.7.6";
@@ -43,7 +44,7 @@ export interface Runtime {
 
 export async function lookup(version: string): Promise<Release> {
   const url = `${RELEASE_ORIGIN}/v/${version}`;
-  const response = await fetch(url);
+  const response = await fetchTrusting(url);
   if (!response.ok) throw new Error(`no release ${version} (${response.status} from ${url})`);
   const script = await response.text();
   const field = (name: string) => {
@@ -159,7 +160,7 @@ export async function fetchVerified(
   tarball: string,
   onProgress?: (fraction: number) => void,
 ): Promise<string> {
-  const response = await fetch(url);
+  const response = await fetchTrusting(url);
   if (!response.ok || !response.body) {
     throw new Error(`download failed (${response.status} from ${url})`);
   }

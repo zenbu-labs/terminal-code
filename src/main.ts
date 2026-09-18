@@ -33,6 +33,7 @@ import {
 } from "./profile";
 import { Pane, launchBrowser, registerSelf } from "./launch";
 import { resolveRuntime, resolveRuntimeWithProgress } from "./runtime/release";
+import { explain } from "./runtime/net";
 import { INSTALL_ROOT } from "./runtime/paths";
 import { skillCommand } from "./skill";
 import { sshForward, sshOpen } from "./ssh";
@@ -605,4 +606,4 @@ void main()
   .then((code) => {
     if (code) process.exit(code);
   })
-  .catch((error: unknown) => fail(error instanceof Error ? error.message : String(error)));
+  .catch((error: unknown) => fail(explain(error)));
