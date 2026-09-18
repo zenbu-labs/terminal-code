@@ -185,16 +185,36 @@ test("an upstream that is down becomes a plain error, not a crash", async () => 
   }
 });
 
+const BUNDLED_STACK = `"JetBrains Mono", Menlo, "DejaVu Sans Mono", "Liberation Mono", monospace`;
+
+const css = (fontStack = BUNDLED_STACK) =>
+  injectedCss({ background: "#101010", bundledFamily: "JetBrains Mono", fontStack });
+
 test("the css paints the root, which is what covers the uncovered row", () => {
-  const css = injectedCss("#101010", "JetBrains Mono");
-  assert.match(css, /html,body\{background:#101010 !important;\}/);
+  assert.match(css(), /html,body\{background:#101010 !important;\}/);
 });
 
 test("the css carries the font for the interface as well as an @font-face", () => {
-  const css = injectedCss("#101010", "JetBrains Mono");
-  assert.match(css, /@font-face\{font-family:"JetBrains Mono";src:url\("\/__tode\/font.ttf"\)/);
-  assert.match(css, /\.monaco-workbench\{[^}]*font-family:"JetBrains Mono"/);
-  assert.match(css, /--monaco-monospace-font:"JetBrains Mono"/);
+  const sheet = css();
+  assert.match(sheet, /@font-face\{font-family:"JetBrains Mono";src:url\("\/__tode\/font.ttf"\)/);
+  assert.match(sheet, /\.monaco-workbench\{[^}]*font-family:"JetBrains Mono"/);
+  assert.match(sheet, /--monaco-monospace-font:"JetBrains Mono"/);
+});
+
+test("a chosen stack is what the workbench is told to render in", () => {
+  const sheet = css(`"JetBrainsMono NF", monospace`);
+  assert.match(sheet, /\.monaco-workbench\{[^}]*font-family:"JetBrainsMono NF", monospace !important;\}/);
+  assert.match(sheet, /--monaco-monospace-font:"JetBrainsMono NF", monospace;/);
+  assert.doesNotMatch(
+    sheet.replace(/@font-face\{[^}]*\}/, ""),
+    /JetBrains Mono"/,
+    "nothing outside the @font-face may still force the bundled family",
+  );
+});
+
+test("the bundled font keeps its @font-face even when another stack is chosen", () => {
+  const sheet = css("Cascadia Mono, monospace");
+  assert.match(sheet, /@font-face\{font-family:"JetBrains Mono";src:url\("\/__tode\/font.ttf"\)/);
 });
 
 test("the font is served by the proxy so no system install is needed", async () => {
@@ -264,7 +284,6 @@ test("a request waits while code-server is still booting, then goes through", as
 });
 
 test("the empty editor stays empty: the watermark is always hidden", () => {
-  const css = injectedCss("#101010", "JetBrains Mono");
-  assert.match(css, /\.editor-group-watermark\{display:none !important;\}/);
+  assert.match(css(), /\.editor-group-watermark\{display:none !important;\}/);
 });
 

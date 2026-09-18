@@ -153,19 +153,29 @@ export function createInjector(
 
 export const FONT_FALLBACKS = `Menlo, "DejaVu Sans Mono", "Liberation Mono", monospace`;
 
-export function injectedCss(background: string, fontFamily: string): string {
-  const stack = `"${fontFamily}", ${FONT_FALLBACKS}`;
+export interface InjectedCss {
+  background: string;
+  /** the font tode ships, which always gets an @font-face so a page can load it
+   * whether or not it was ever installed into the operating system */
+  bundledFamily: string;
+  /** what the workbench is actually told to render in. The bundled stack unless
+   * the user picked something else in settings.json, which is why this is a
+   * whole stack rather than one family name. */
+  fontStack: string;
+}
+
+export function injectedCss({ background, bundledFamily, fontStack }: InjectedCss): string {
   return [
-    `@font-face{font-family:"${fontFamily}";src:url("${FONT_ROUTE}") format("truetype");font-weight:100 900;font-display:block;}`,
+    `@font-face{font-family:"${bundledFamily}";src:url("${FONT_ROUTE}") format("truetype");font-weight:100 900;font-display:block;}`,
     `html,body{background:${background} !important;}`,
     "html{overflow:hidden;}",
     "body{margin:0;}",
-    `.monaco-workbench{background:${background};font-family:${stack} !important;}`,
+    `.monaco-workbench{background:${background};font-family:${fontStack} !important;}`,
     `.monaco-workbench .part,.monaco-workbench .monaco-list,.monaco-workbench .monaco-inputbox,`,
     `.monaco-workbench input,.monaco-workbench select,.monaco-workbench textarea,`,
     `.monaco-menu,.quick-input-widget,.monaco-hover,.notifications-toasts`,
-    `{font-family:${stack} !important;}`,
-    `:root{--monaco-monospace-font:${stack};}`,
+    `{font-family:${fontStack} !important;}`,
+    `:root{--monaco-monospace-font:${fontStack};}`,
     ".editor-group-watermark{display:none !important;}",
   ].join("");
 }

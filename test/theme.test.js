@@ -201,6 +201,131 @@ test("seeded settings fill gaps but never overwrite what is already there", () =
   assert.equal(readKey(chosen, "workbench.activityBar.location"), "default");
 });
 
+const FONT_SETTING_KEYS = [
+  "editor.fontFamily",
+  "terminal.integrated.fontFamily",
+  "chat.editor.fontFamily",
+  "debug.console.fontFamily",
+  "markdown.preview.fontFamily",
+];
+
+test("font defaults are seeded when absent", () => {
+  const { applySettings, FONT_FAMILY } = require("../dist/profile.js");
+  const { FONT_FALLBACKS } = require("../dist/codeserver/inject.js");
+  const expected = `"${FONT_FAMILY}", ${FONT_FALLBACKS}`;
+  const out = applySettings("{}");
+  for (const key of FONT_SETTING_KEYS) assert.equal(readKey(out, key), expected);
+});
+
+test("font defaults preserve explicit user choices", () => {
+  const { applySettings } = require("../dist/profile.js");
+  const choices = Object.fromEntries(
+    FONT_SETTING_KEYS.map((key, at) => [key, `User Font ${at}, monospace`]),
+  );
+  const out = applySettings(setKeys("{}", choices));
+  for (const [key, value] of Object.entries(choices)) assert.equal(readKey(out, key), value);
+});
+
+test("applying font defaults repeatedly is stable", () => {
+  const { applySettings } = require("../dist/profile.js");
+  const first = applySettings("{}");
+  assert.equal(applySettings(first), first);
+
+  const chosen = applySettings(setKeys(first, { "editor.fontFamily": "\"JetBrainsMono NF\", monospace" }));
+  assert.equal(applySettings(chosen), chosen);
+});
+
+test("font choices survive the import merge and are not managed by tode", () => {
+  const { applySettings, managedSettings } = require("../dist/profile.js");
+  const imported = {
+    "editor.fontFamily": "\"JetBrainsMono NF\", monospace",
+    "terminal.integrated.fontFamily": "Cascadia Mono, monospace",
+    "chat.editor.fontFamily": "User Chat Font",
+    "debug.console.fontFamily": "User Debug Font",
+    "markdown.preview.fontFamily": "User Markdown Font",
+    "editor.tabSize": 8,
+  };
+  const out = applySettings(setKeys(`{"workbench.colorTheme": "Monokai"}`, imported));
+  const managed = managedSettings();
+
+  for (const [key, value] of Object.entries(imported)) assert.equal(readKey(out, key), value);
+  for (const key of FONT_SETTING_KEYS) assert.equal(Object.hasOwn(managed, key), false);
+  assert.equal(readKey(out, "workbench.colorTheme"), "Terminal Code");
+});
+
+/** runs `body` against a throwaway data home, with the modules reloaded so they
+ * resolve their paths inside it */
+function inFreshDataHome(prefix, body) {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const prev = process.env.XDG_DATA_HOME;
+  process.env.XDG_DATA_HOME = path.join(home, "share");
+  for (const key of Object.keys(require.cache)) delete require.cache[key];
+  try {
+    const profile = require("../dist/profile.js");
+    const { CSS_FILE } = require("../dist/codeserver/server.js");
+    const { withFallbacks } = require("../dist/terminal/osc.js");
+    const writeSettings = (source) => {
+      fs.mkdirSync(profile.USER_DIR, { recursive: true });
+      fs.writeFileSync(path.join(profile.USER_DIR, "settings.json"), source);
+    };
+    const installedCss = () => {
+      profile.installCss(withFallbacks(null));
+      return fs.readFileSync(CSS_FILE, "utf8");
+    };
+    body({ profile, writeSettings, installedCss });
+  } finally {
+    process.env.XDG_DATA_HOME = prev;
+    fs.rmSync(home, { recursive: true, force: true });
+    for (const key of Object.keys(require.cache)) delete require.cache[key];
+  }
+}
+
+test("the injected css renders in the font the user chose", () => {
+  inFreshDataHome("tode-css-font-", ({ writeSettings, installedCss }) => {
+    writeSettings(`{"editor.fontFamily": "\\"JetBrainsMono NF\\", monospace"}`);
+    const css = installedCss();
+    assert.match(css, /\.monaco-workbench\{[^}]*font-family:"JetBrainsMono NF", monospace !important;\}/);
+    assert.match(css, /--monaco-monospace-font:"JetBrainsMono NF", monospace;/);
+    assert.match(css, /@font-face\{font-family:"JetBrains Mono";/, "the bundled font still loads");
+  });
+});
+
+test("a changed font reaches the css on the next install, not only the first", () => {
+  inFreshDataHome("tode-css-font-change-", ({ writeSettings, installedCss }) => {
+    writeSettings(`{}`);
+    assert.match(installedCss(), /--monaco-monospace-font:"JetBrains Mono"/);
+
+    writeSettings(`{"editor.fontFamily": "Cascadia Mono, monospace"}`);
+    assert.match(installedCss(), /--monaco-monospace-font:Cascadia Mono, monospace;/);
+  });
+});
+
+test("a font tode cannot use falls back to the bundled stack", () => {
+  inFreshDataHome("tode-css-font-bad-", ({ profile, writeSettings, installedCss }) => {
+    for (const value of ["", "   ", "a} body{display:none", "a;color:red", "a/*x*/"]) {
+      writeSettings(JSON.stringify({ "editor.fontFamily": value }));
+      assert.equal(profile.userFontStack(), null, `${value} must be refused`);
+      assert.ok(installedCss().includes(`--monaco-monospace-font:${profile.FONT_STACK};`));
+    }
+
+    writeSettings(`{"editor.fontFamily": 13}`);
+    assert.equal(profile.userFontStack(), null, "a number is not a font stack");
+
+    writeSettings(`{ this is not json`);
+    assert.equal(profile.userFontStack(), null, "nonsense is not a font stack");
+  });
+});
+
+test("no settings file at all still produces the bundled stack", () => {
+  inFreshDataHome("tode-css-font-none-", ({ profile, installedCss }) => {
+    assert.equal(profile.userFontStack(), null);
+    assert.ok(installedCss().includes(`--monaco-monospace-font:${profile.FONT_STACK};`));
+  });
+});
+
 test("managed settings always win, even over an import", () => {
   const { applySettings } = require("../dist/profile.js");
   const { readKey } = require("../dist/jsonc.js");

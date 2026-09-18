@@ -238,15 +238,17 @@ export function registerThemeExtension(dir?: string): void {
   fs.writeFileSync(manifest, `${JSON.stringify([...without, entry], null, 2)}\n`);
 }
 
-const FONT_STACK = `"${FONT_FAMILY}", ${FONT_FALLBACKS}`;
+export const FONT_STACK = `"${FONT_FAMILY}", ${FONT_FALLBACKS}`;
+
+/** How long a font stack is allowed to be before it stops looking like one. */
+const FONT_STACK_LIMIT = 200;
+
+/** Anything that could end the declaration the stack is pasted into, or open a
+ * comment inside it. A font stack containing these is not a font stack. */
+const CSS_BREAKERS = /[{}<>;\\]|\/\*/;
 
 export const SETTINGS: Record<string, unknown> = {
   "workbench.colorTheme": THEME_NAME,
-  "editor.fontFamily": FONT_STACK,
-  "terminal.integrated.fontFamily": FONT_STACK,
-  "chat.editor.fontFamily": FONT_STACK,
-  "debug.console.fontFamily": FONT_STACK,
-  "markdown.preview.fontFamily": FONT_STACK,
   "terminal.integrated.enableImages": true,
   "workbench.startupEditor": "none",
   "workbench.secondarySideBar.defaultVisibility": "hidden",
@@ -272,14 +274,46 @@ export const SETTINGS: Record<string, unknown> = {
 export const SEEDED_SETTINGS: Record<string, unknown> = {
   "workbench.activityBar.location": "top",
   "editor.fontSize": 13,
+  "editor.fontFamily": FONT_STACK,
+  "terminal.integrated.fontFamily": FONT_STACK,
+  "chat.editor.fontFamily": FONT_STACK,
+  "debug.console.fontFamily": FONT_STACK,
+  "markdown.preview.fontFamily": FONT_STACK,
   "workbench.tree.indent": 12,
   "editor.cursorBlinking": "solid",
   "editor.minimap.enabled": false,
   "scm.defaultViewMode": "tree",
 };
 
+/** The font stack the user chose in settings.json, or null when there is none
+ * worth using: no file, no key, not a string, or not something that can be
+ * pasted into css. Read at install time rather than cached, so a launch after an
+ * edit picks the new value up. */
+export function userFontStack(): string | null {
+  let source: string;
+  try {
+    source = fs.readFileSync(path.join(USER_DIR, "settings.json"), "utf8");
+  } catch {
+    return null;
+  }
+  const chosen = readKey(source, "editor.fontFamily");
+  if (typeof chosen !== "string") return null;
+  const stack = chosen.trim();
+  if (!stack || stack.length > FONT_STACK_LIMIT || CSS_BREAKERS.test(stack)) return null;
+  return stack;
+}
+
+/** Regenerated on every open, which is what lets the injected css follow the
+ * font the user is on rather than the one tode shipped. */
 export function installCss(palette: TerminalPalette): boolean {
-  return writeIfChanged(CSS_FILE, injectedCss(hex(palette.background), FONT_FAMILY));
+  return writeIfChanged(
+    CSS_FILE,
+    injectedCss({
+      background: hex(palette.background),
+      bundledFamily: FONT_FAMILY,
+      fontStack: userFontStack() ?? FONT_STACK,
+    }),
+  );
 }
 
 export function setLiveTheme(theme: ThemeDocument): boolean {
