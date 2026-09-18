@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import { fetchTrusting } from "./runtime/net";
 import { DEFAULT_INSTALL_ROOT, INSTALL_ROOT, STATE_DIR } from "./runtime/paths";
 import { targetTriple } from "./runtime/release";
 
@@ -52,7 +53,7 @@ function buildFor(manifest: Manifest): Build {
 
 export async function latest(channel: string): Promise<Build> {
   const url = channel === "stable" ? `${ORIGIN}/latest.json` : `${ORIGIN}/${channel}/latest.json`;
-  const response = await fetch(url);
+  const response = await fetchTrusting(url);
   if (!response.ok) throw new Error(`could not read ${url} (${response.status})`);
   return buildFor((await response.json()) as Manifest);
 }
@@ -60,13 +61,13 @@ export async function latest(channel: string): Promise<Build> {
 /** A pinned version's manifest, for `tode upgrade --version`. */
 export async function release(version: string): Promise<Build> {
   const url = `${ORIGIN}/v/${version}/manifest.json`;
-  const response = await fetch(url);
+  const response = await fetchTrusting(url);
   if (!response.ok) throw new Error(`no release ${version} (${response.status} from ${url})`);
   return buildFor((await response.json()) as Manifest);
 }
 
 async function fetchBuild(build: Build, onProgress?: (fraction: number) => void): Promise<string> {
-  const response = await fetch(build.url);
+  const response = await fetchTrusting(build.url);
   if (!response.ok || !response.body) {
     throw new Error(`download failed (${response.status} from ${build.url})`);
   }
