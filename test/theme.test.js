@@ -403,7 +403,10 @@ test("the bridge maps quit per platform, always behind a confirm", () => {
       const hint = pkg.contributes.keybindings[1];
       assert.equal(hint.key, "ctrl+c");
       assert.equal(hint.command, "tode.quitHint");
-      assert.match(hint.when, /!editorHasSelection/, "ctrl+c with a selection must stay copy");
+      assert.match(hint.when, /!editorTextFocus/, "ctrl+c in the editor must stay copy");
+      assert.match(hint.when, /!terminalFocus/, "ctrl+c in the terminal is the shell's");
+      const { hintWhen } = require("../dist/shortcuts/store.js");
+      assert.equal(hint.when, hintWhen(), "the manifest and the keybindings file must agree");
     }
 
     const command = pkg.contributes.commands[0];

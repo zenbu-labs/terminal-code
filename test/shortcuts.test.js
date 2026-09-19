@@ -606,6 +606,24 @@ test("the quit chord lives at user level, unless a decision moved or surrendered
       assert.equal(store.hintBindings().length, 1, "linux redirects ctrl+c to the quit chord");
     }
 
+    // ctrl+c in a text editor is copy, selection or whole line. The hint may
+    // have the rest of the workbench and nothing else.
+    assert.match(store.hintWhen(), /!editorTextFocus/, "the hint steps out of the editor");
+    assert.match(store.hintWhen(), /!terminalFocus/, "the terminal keeps ctrl+c for SIGINT");
+    for (const hint of store.hintBindings()) {
+      assert.equal(hint.key, "ctrl+c");
+      assert.equal(hint.command, "tode.quitHint");
+      assert.equal(hint.when, store.hintWhen());
+    }
+    // quit keeps the wider guard: on macOS ctrl+c is the quit chord itself and
+    // must still fire from the editor
+    assert.doesNotMatch(store.quitWhen(), /!editorTextFocus/, "quit is not narrowed with the hint");
+
+    // what the workbench installs must be the same rule the store describes
+    const { builtinKeybindings } = require("../dist/profile.js");
+    const builtinHint = builtinKeybindings().find((entry) => entry.command === "tode.quitHint");
+    assert.deepEqual(builtinHint ?? null, store.hintBindings()[0] ?? null);
+
     store.saveDecisions({ version: 1, terminal: "ghostty", choices: { [store.QUIT_CHORD]: { choice: "terminal" } } });
     assert.equal(store.quitBindings().length, 1, "a freed terminal chord still quits in tode");
 

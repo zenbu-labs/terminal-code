@@ -105,10 +105,16 @@ export function quitWhen(): string {
   return QUIT_CHORD === "ctrl+c" ? HINT_BASE : "!terminalFocus";
 }
 
-/** The guard on the ctrl+c redirect hint, where ctrl+c is not itself quit —
- * uncarved for the same reason quit is. */
+/** The guard on the ctrl+c redirect hint, where ctrl+c is not itself quit.
+ *
+ * Narrower than the quit guard on purpose: inside a text editor ctrl+c is copy,
+ * selection or whole line, and taking it to show a hint costs a shortcut people
+ * press hundreds of times a day. The hint is left for trees, lists and the rest
+ * of the workbench, where ctrl+c mostly does nothing anyway. quitWhen keeps
+ * HINT_BASE, because on macOS ctrl+c is the quit chord and must still fire from
+ * the editor. */
 export function hintWhen(): string {
-  return HINT_BASE;
+  return "!terminalFocus && !editorTextFocus && !inputFocus";
 }
 
 // what is a hint binding? i dont think thats a thing??
