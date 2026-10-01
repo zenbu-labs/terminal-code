@@ -5,18 +5,14 @@ import path from "node:path";
 
 import { CSS_FILE } from "./codeserver/server";
 import { FONT_FALLBACKS, injectedCss } from "./codeserver/inject";
-import { parseJsonc, readKey, setKeys } from "./jsonc";
+import { parseJsonc, readKey, setKey, setKeys } from "./jsonc";
 import { DATA_DIR } from "./runtime/paths";
 import { CLAIM_DECISION_ID, IMPORT_DECISION_ID, QUIT_CHORD, QUIT_COMMAND, claimBindings, fallbackBindings, hintBindings, loadDecisions, overrideBindings, quitBindings, quitWhen, decisionsStamp } from "./shortcuts/store";
 import { queryTerminal, withFallbacks } from "./terminal/osc";
 import type { ParsedReplies, TerminalPalette } from "./terminal/osc";
 import { hex } from "./theme/color";
-import {
-  THEME_NAME,
-  generateTheme,
-  paletteFingerprint,
-  themeFingerprint,
-} from "./theme/generate";
+import { THEME_NAME, generateTheme, paletteFingerprint, themeFingerprint } from "./theme/generate";
+import type { GeneratedTheme } from "./theme/generate";
 
 export const VSCODE_DIR = path.join(DATA_DIR, "vscode");
 export const USER_DIR = path.join(VSCODE_DIR, "user-data", "User");
@@ -143,8 +139,36 @@ export interface ThemeDocument {
   semanticHighlighting?: boolean;
 }
 
-export function installTheme(palette: TerminalPalette): { changed: boolean; fingerprint: string } {
-  return installThemeJson(generateTheme(palette), paletteFingerprint(palette));
+export const TRANSPARENCY_SETTING = "tode.transparent";
+export const SETTINGS_FILE = path.join(USER_DIR, "settings.json");
+
+function readSettings(): string {
+  try {
+    return fs.readFileSync(SETTINGS_FILE, "utf8") || "{}";
+  } catch {
+    return "{}";
+  }
+}
+
+export function transparencyEnabled(): boolean {
+  return readKey(readSettings(), TRANSPARENCY_SETTING) === true;
+}
+
+export function setTransparency(on: boolean): boolean {
+  fs.mkdirSync(USER_DIR, { recursive: true });
+  return writeIfChanged(SETTINGS_FILE, setKey(readSettings(), TRANSPARENCY_SETTING, on));
+}
+
+export function currentTheme(palette: TerminalPalette, transparent = transparencyEnabled()): GeneratedTheme {
+  return generateTheme(palette, { transparent });
+}
+
+export function installTheme(
+  palette: TerminalPalette,
+  transparent = transparencyEnabled(),
+): { changed: boolean; fingerprint: string } {
+  const fingerprint = `${paletteFingerprint(palette)}${transparent ? "-clear" : ""}`;
+  return installThemeJson(generateTheme(palette, { transparent }), fingerprint);
 }
 
 export function installThemeJson(
@@ -278,8 +302,8 @@ export const SEEDED_SETTINGS: Record<string, unknown> = {
   "scm.defaultViewMode": "tree",
 };
 
-export function installCss(palette: TerminalPalette): boolean {
-  return writeIfChanged(CSS_FILE, injectedCss(hex(palette.background), FONT_FAMILY));
+export function installCss(palette: TerminalPalette, transparent = transparencyEnabled()): boolean {
+  return writeIfChanged(CSS_FILE, injectedCss(hex(palette.background), FONT_FAMILY, transparent));
 }
 
 export function setLiveTheme(theme: ThemeDocument): boolean {

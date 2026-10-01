@@ -91,9 +91,6 @@ export async function shutdownDaemon(): Promise<boolean> {
   return true;
 }
 
-// Shows the window on this terminal and returns when it closes. The window
-// process owns the terminal from here on; signals still arrive at this
-// process, so resize and ctrl+c are relayed.
 function attachWindow(url: string, options: LaunchOptions): { exited: Promise<number>; close(): void } {
   let send = (_request: Request) => {};
   let closeRequested = false;
@@ -224,7 +221,7 @@ export class Pane {
   private async openSplit(url: string, direction: string): Promise<number> {
     const tty = windowTty();
     if (tty && hosted(tty)) {
-      process.stderr.write("[placeholder copy: tode is drawing inside another program's pane, so --split cannot open a new one]\n");
+      process.stderr.write("--split is not available inside another program's pane\n");
       return 1;
     }
     const terminal = detect();

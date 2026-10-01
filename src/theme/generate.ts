@@ -87,12 +87,20 @@ export function paletteFingerprint(palette: TerminalPalette): string {
   return crypto.createHash("sha256").update(parts).digest("hex").slice(0, 16);
 }
 
-export function generateTheme(palette: TerminalPalette): GeneratedTheme {
+export interface ThemeOptions {
+  transparent?: boolean;
+}
+
+export function generateTheme(palette: TerminalPalette, options: ThemeOptions = {}): GeneratedTheme {
   const bg = palette.background;
   const fg = palette.foreground;
   const dark = isDark(bg);
   const s = surfaces(bg, fg);
   const accent = semanticColors(palette);
+  const clear = options.transparent === true;
+  const CLEAR = "#00000000";
+  const surface = (color: Rgb) => (clear ? CLEAR : hex(color));
+  const tint = (color: Rgb, alpha: number) => (clear ? withAlpha(fg, alpha) : hex(color));
 
   const on = (color: Rgb, target = 4.5) => hex(legible(color, s.editor, target));
   const muted = hex(mix(fg, bg, 0.4));
@@ -110,7 +118,7 @@ export function generateTheme(palette: TerminalPalette): GeneratedTheme {
     "icon.foreground": muted,
     "sash.hoverBorder": withAlpha(primary, 0.7),
 
-    "editor.background": hex(s.editor),
+    "editor.background": surface(s.editor),
     "editor.foreground": hex(fg),
     "editorLineNumber.foreground": hex(mix(fg, bg, 0.68)),
     "editorLineNumber.activeForeground": hex(fg),
@@ -122,7 +130,7 @@ export function generateTheme(palette: TerminalPalette): GeneratedTheme {
     "editor.wordHighlightStrongBackground": withAlpha(accent.green, 0.16),
     "editor.findMatchBackground": withAlpha(accent.yellow, 0.4),
     "editor.findMatchHighlightBackground": withAlpha(accent.yellow, 0.22),
-    "editor.lineHighlightBackground": hex(s.raised),
+    "editor.lineHighlightBackground": tint(s.raised, 0.06),
     "editor.rangeHighlightBackground": withAlpha(primary, 0.1),
     "editorWhitespace.foreground": withAlpha(fg, 0.15),
     "editorIndentGuide.background1": withAlpha(fg, 0.1),
@@ -155,61 +163,61 @@ export function generateTheme(palette: TerminalPalette): GeneratedTheme {
     "pickerGroup.foreground": muted,
     "pickerGroup.border": hex(s.border),
 
-    "sideBar.background": hex(s.sunken),
+    "sideBar.background": surface(s.sunken),
     "sideBar.foreground": hex(mix(fg, bg, 0.12)),
     "sideBar.border": hex(s.border),
     "sideBarTitle.foreground": muted,
-    "sideBarSectionHeader.background": hex(s.sunken),
+    "sideBarSectionHeader.background": surface(s.sunken),
     "sideBarSectionHeader.foreground": muted,
     "sideBarSectionHeader.border": hex(s.border),
 
-    "activityBar.background": hex(s.sunken),
+    "activityBar.background": surface(s.sunken),
     "activityBar.foreground": hex(fg),
     "activityBar.inactiveForeground": faint,
     "activityBar.border": hex(s.border),
     "activityBarBadge.background": hex(primary),
     "activityBarBadge.foreground": hex(isDark(primary) ? [255, 255, 255] : [0, 0, 0]),
 
-    "statusBar.background": hex(s.sunken),
+    "statusBar.background": surface(s.sunken),
     "statusBar.foreground": muted,
     "statusBar.border": hex(s.border),
-    "statusBar.noFolderBackground": hex(s.sunken),
+    "statusBar.noFolderBackground": surface(s.sunken),
     "statusBar.debuggingBackground": hex(accent.yellow),
     "statusBar.debuggingForeground": hex(isDark(accent.yellow) ? [255, 255, 255] : [0, 0, 0]),
-    "statusBarItem.remoteBackground": hex(s.sunken),
+    "statusBarItem.remoteBackground": surface(s.sunken),
     "statusBarItem.remoteForeground": muted,
-    "statusBarItem.hoverBackground": hex(s.hover),
+    "statusBarItem.hoverBackground": tint(s.hover, 0.1),
 
-    "titleBar.activeBackground": hex(s.sunken),
+    "titleBar.activeBackground": surface(s.sunken),
     "titleBar.activeForeground": muted,
-    "titleBar.inactiveBackground": hex(s.sunken),
+    "titleBar.inactiveBackground": surface(s.sunken),
     "titleBar.inactiveForeground": faint,
     "titleBar.border": hex(s.border),
 
-    "panel.background": hex(s.editor),
+    "panel.background": surface(s.editor),
     "panel.border": hex(s.border),
     "panelTitle.activeForeground": hex(fg),
     "panelTitle.inactiveForeground": faint,
     "panelTitle.activeBorder": hex(primary),
 
-    "editorGroupHeader.tabsBackground": hex(s.sunken),
+    "editorGroupHeader.tabsBackground": surface(s.sunken),
     "editorGroupHeader.tabsBorder": hex(s.border),
-    "editorGroupHeader.noTabsBackground": hex(s.sunken),
+    "editorGroupHeader.noTabsBackground": surface(s.sunken),
     "editorGroup.border": hex(s.border),
-    "tab.activeBackground": hex(s.editor),
+    "tab.activeBackground": tint(s.editor, 0.1),
     "tab.activeForeground": hex(fg),
-    "tab.inactiveBackground": hex(s.sunken),
+    "tab.inactiveBackground": surface(s.sunken),
     "tab.inactiveForeground": faint,
     "tab.border": hex(s.border),
     "tab.activeBorderTop": hex(primary),
-    "tab.hoverBackground": hex(s.hover),
-    "tab.unfocusedActiveBackground": hex(s.sunken),
+    "tab.hoverBackground": tint(s.hover, 0.06),
+    "tab.unfocusedActiveBackground": tint(s.sunken, 0.05),
 
-    "list.activeSelectionBackground": hex(s.active),
+    "list.activeSelectionBackground": tint(s.active, 0.16),
     "list.activeSelectionForeground": hex(fg),
-    "list.inactiveSelectionBackground": hex(s.hover),
-    "list.hoverBackground": hex(s.hover),
-    "list.focusBackground": hex(s.active),
+    "list.inactiveSelectionBackground": tint(s.hover, 0.1),
+    "list.hoverBackground": tint(s.hover, 0.08),
+    "list.focusBackground": tint(s.active, 0.16),
     "list.highlightForeground": hex(primary),
     "list.errorForeground": on(accent.red),
     "list.warningForeground": on(accent.yellow),
@@ -239,7 +247,7 @@ export function generateTheme(palette: TerminalPalette): GeneratedTheme {
     "scrollbarSlider.background": withAlpha(fg, 0.14),
     "scrollbarSlider.hoverBackground": withAlpha(fg, 0.22),
     "scrollbarSlider.activeBackground": withAlpha(fg, 0.3),
-    "minimap.background": hex(s.editor),
+    "minimap.background": surface(s.editor),
 
     "menu.background": hex(s.overlay),
     "menu.foreground": hex(fg),
@@ -264,13 +272,16 @@ export function generateTheme(palette: TerminalPalette): GeneratedTheme {
 
     "breadcrumb.foreground": faint,
     "breadcrumb.focusForeground": hex(fg),
-    "breadcrumb.background": hex(s.editor),
+    "breadcrumb.background": surface(s.editor),
 
-    "terminal.background": hex(s.editor),
+    "terminal.background": surface(s.editor),
     "terminal.foreground": hex(fg),
     "terminalCursor.foreground": hex(primary),
     "terminal.selectionBackground": withAlpha(primary, 0.3),
     "terminal.border": hex(s.border),
+    // special case da sticky headers
+    "editorStickyScroll.background": clear ? withAlpha(bg, 0.85) : hex(s.editor),
+    "editorStickyScrollHover.background": clear ? withAlpha(fg, 0.1) : hex(s.hover),
   };
 
   const ANSI_NAMES = [

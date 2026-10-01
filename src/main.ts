@@ -18,15 +18,17 @@ import { importCommand } from "./import/command";
 import { runImport } from "./import/run";
 import type { Editor } from "./import/editors";
 import { runOnboarding } from "./onboarding";
-import { parseGoto, runningWindow, sendToExtension } from "./ipc";
+import { parseGoto, runningWindow, sendToExtension, windowSockets } from "./ipc";
 import type { OpenFile } from "./ipc";
 import { EXTENSIONS_DIR, VSCODE_DIR, registerThemeExtension } from "./profile";
 import {
+  currentTheme,
   ensureFont,
   installCss,
   installKeybindings,
   setLiveTheme,
   setThemeFile,
+  setTransparency,
   installSettings,
   installTheme,
   readPalette,
@@ -40,7 +42,7 @@ import type { TerminalPalette } from "./terminal/osc";
 import { uninstallCommand } from "./uninstall";
 import { upgrade } from "./upgrade";
 import { hex } from "./theme/color";
-import { generateTheme, semanticColors } from "./theme/generate";
+import { semanticColors } from "./theme/generate";
 
 // hm? does it ever get installed at home dir local?
 function shimPath(): string {
@@ -60,7 +62,7 @@ async function bootEditorUrl(): Promise<string> {
   installTheme(palette);
   installCss(palette);
   installSettings();
-  setLiveTheme(generateTheme(palette));
+  setLiveTheme(currentTheme(palette));
   installBridge(todeCommand());
   installKeybindings();
   const server = await ensureServer();
@@ -133,6 +135,8 @@ Commands, each as the first argument:
   --import [editor]     Bring settings, keybindings, snippets and extensions
                         over from vscode compatible editors
   --theme [file]        Set editor theme
+  --enable-transparency Make the editor transparent
+  --disable-transparency Make the editor opaque again
   --serve [path]        Start code server and print its url
   --skill               An agent skill to assist with modifying terminal-code
   --upgrade [--check]   Upgrade terminal-code to the latest version
@@ -256,7 +260,7 @@ async function openCommand(args: string[]): Promise<number> {
   installTheme(palette);
   installCss(palette);
   installSettings();
-  setLiveTheme(generateTheme(palette));
+  setLiveTheme(currentTheme(palette));
   done("profile");
   autoApplyShared();
 
@@ -392,7 +396,7 @@ async function themeCommand(file?: string): Promise<number> {
   process.stdout.write(`  ${palette.ansi.map((c) => swatch(hex(c))).join("")}  ansi 0-15\n`);
   for (const [name, color] of Object.entries(accent)) process.stdout.write(line(name, hex(color)));
   const { changed, fingerprint } = installTheme(palette);
-  setLiveTheme(generateTheme(palette));
+  setLiveTheme(currentTheme(palette));
   installBridge(todeCommand());
   installCss(palette);
   installSettings();
@@ -449,6 +453,22 @@ function timingCommand(): number {
   for (const [label, ms] of rows) {
     process.stdout.write(`  ${label.padEnd(24)} ${String(ms).padStart(5)}ms  ${bar(ms, total)}\n`);
   }
+  return 0;
+}
+
+async function transparencyCommand(on: boolean): Promise<number> {
+  const changed = setTransparency(on);
+  await Promise.all(
+    windowSockets().map((socket) =>
+      sendToExtension(socket, { files: [], folders: [], add: false, transparency: on }, 1500).catch(() => {}),
+    ),
+  );
+  const state = on ? "on" : "off";
+  process.stdout.write(
+    changed
+      ? `transparency ${state}, reload open windows to apply\n`
+      : `transparency already ${state}\n`,
+  );
   return 0;
 }
 
@@ -555,7 +575,7 @@ async function serveCommand(args: string[]): Promise<number> {
   installTheme(palette);
   installCss(palette);
   installSettings();
-  setLiveTheme(generateTheme(palette));
+  setLiveTheme(currentTheme(palette));
   autoApplyShared();
   if (prepare) return 0;
   installBridge(todeCommand());
@@ -592,6 +612,8 @@ async function main(): Promise<number> {
   }
   if (args[0] === "--import") return importCommand(args.slice(1));
   if (args[0] === "--theme") return themeCommand(args[1]);
+  if (args[0] === "--enable-transparency") return transparencyCommand(true);
+  if (args[0] === "--disable-transparency") return transparencyCommand(false);
   // alone it reads the last load's story; next to a path it stays the open
   // option that reports this open's stages
   if (args[0] === "--timing" && args.length === 1) return timingCommand();

@@ -38,7 +38,10 @@ function loadBridgeSandbox(extensionSource, fakeHome, vscodeOverrides = {}) {
   const updates = [];
   const spawned = [];
   const vscode = {
-    workspace: { getConfiguration: () => ({ update: (key, value) => updates.push({ key, value }) }) },
+    workspace: {
+      getConfiguration: () => ({ get: () => undefined, update: (key, value) => updates.push({ key, value }) }),
+      onDidChangeConfiguration: () => ({ dispose() {} }),
+    },
     ConfigurationTarget: { Global: 1 },
     commands: { registerCommand: () => ({ dispose() {} }), executeCommand: () => {} },
     window: { tabGroups: { all: [], onDidChangeTabs: () => ({ dispose() {} }) } },
@@ -127,7 +130,8 @@ test("the startup marker replays views and diffs once, then burns", async () => 
     const { extension } = loadBridgeSandbox(source, home, {
       commands: {
         registerCommand: () => ({ dispose() {} }),
-        executeCommand: (command, ...rest) => ran.push([command, ...rest.map(String)]),
+        // the context key for the transparency commands is set on every activation
+        executeCommand: (command, ...rest) => command !== "setContext" && ran.push([command, ...rest.map(String)]),
       },
       Uri: { file: (p) => ({ toString: () => `file://${p}` }) },
     });
@@ -148,7 +152,7 @@ test("the startup marker replays views and diffs once, then burns", async () => 
     const again = loadBridgeSandbox(source, home, {
       commands: {
         registerCommand: () => ({ dispose() {} }),
-        executeCommand: (command) => again.ran.push(command),
+        executeCommand: (command) => command !== "setContext" && again.ran.push(command),
       },
     });
     again.ran = [];

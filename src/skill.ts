@@ -190,8 +190,10 @@ ${STARTUP_OPEN_FILE} is a one-shot marker with the parts of an open the url cann
 open: \`tode [path...]\` (-g goto, -d diff, -a add, -r reuse, -n new pane, -w wait,
 --split/--size, --review, --install-extension, --list-extensions). Every bare
 word is a path; commands are flags in first position: --shortcut-setup,
---import, --theme, --timing (alone: the last page load), --upgrade,
---shutdown, --uninstall, --skill (this document).
+--import, --theme, --enable-transparency/--disable-transparency (sets
+tode.transparent in the editor's settings.json for good; open windows follow
+live; the palette has the same two commands), --timing (alone: the last page
+load), --upgrade, --shutdown, --uninstall, --skill (this document).
 `;
 }
 

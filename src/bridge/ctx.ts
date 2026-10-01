@@ -3,4 +3,6 @@ export interface BridgeCtx {
   liveThemeFile: string;
   quitHint: string;
   startupOpenFile: string;
+  daemonSocket: string;
+  transparencySetting: string;
 }

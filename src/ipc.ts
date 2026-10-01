@@ -17,6 +17,7 @@ export interface OpenRequest {
   diff?: string[];
   view?: string;
   theme?: Record<string, unknown>;
+  transparency?: boolean;
 }
 
 export function runningWindow(): string | null {
@@ -69,6 +70,17 @@ export function parseGoto(argument: string): OpenFile {
     line: Number(match[2]),
     column: match[3] ? Number(match[3]) : 1,
   };
+}
+
+export function windowSockets(): string[] {
+  try {
+    return fs
+      .readdirSync(ipcSocketDir())
+      .filter((name) => name.endsWith(".sock"))
+      .map((name) => path.join(ipcSocketDir(), name));
+  } catch {
+    return [];
+  }
 }
 
 export function ipcSocketDir(): string {

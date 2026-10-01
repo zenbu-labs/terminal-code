@@ -3,22 +3,35 @@ import net from "node:net";
 import path from "node:path";
 
 import { app, ipcMain } from "@zenbu-labs/pixel/electron";
-import { createRoot } from "@zenbu-labs/pixel";
+import { WebView, createRoot } from "@zenbu-labs/pixel";
 import type { Root, WebViewHandle } from "@zenbu-labs/pixel";
+import { createElement } from "react";
 
 import { ipcSocketDir, sendToExtension } from "../ipc";
 import { parseRawColors } from "../livesync";
-import { generateTheme } from "../theme/generate";
+import { cachedPalette, currentTheme, installCss, installTheme, setLiveTheme, transparencyEnabled } from "../profile";
+import type { TerminalPalette } from "../terminal/osc";
 import { MESSAGE_CHANNEL } from "./messages";
 import type { ThemeMessage, TimingMessage } from "./messages";
-import { daemonSocket, lines } from "./protocol";
+import { browserProfileDir, daemonSocket, lines } from "./protocol";
 import type { OpenRequest, Reply, Request } from "./protocol";
+
+fs.mkdirSync(browserProfileDir(), { recursive: true });
+app.setPath("userData", browserProfileDir());
+app.setPath("sessionData", browserProfileDir());
 
 const IDLE_EXIT_MS = 15_000;
 const SOCKET = daemonSocket();
 
-const windows = new Map<Root, { view: WebViewHandle; timingFile?: string }>();
+interface Window {
+  view: WebViewHandle | null;
+  request: OpenRequest;
+  transparent: boolean;
+}
+
+const windows = new Map<Root, Window>();
 let idle: ReturnType<typeof setTimeout> | null = null;
+let lastPalette: TerminalPalette | null = null;
 
 function scheduleIdleExit() {
   if (idle) clearTimeout(idle);
@@ -30,7 +43,8 @@ function scheduleIdleExit() {
 ipcMain.on(MESSAGE_CHANNEL, (event, message: ThemeMessage | TimingMessage | null) => {
   if (!message) return;
   if (message.type === "timing" && message.page) {
-    const timingFile = [...windows.values()].find((window) => window.view.webContents.id === event.sender.id)?.timingFile;
+    const timingFile = [...windows.values()].find((window) => window.view?.webContents.id === event.sender.id)
+      ?.request.timingFile;
     if (timingFile) {
       try {
         fs.writeFileSync(timingFile, JSON.stringify(message.page));
@@ -41,7 +55,12 @@ ipcMain.on(MESSAGE_CHANNEL, (event, message: ThemeMessage | TimingMessage | null
   if (message.type !== "theme" || !message.colors) return;
   const palette = parseRawColors(JSON.stringify(message.colors));
   if (!palette) return;
-  const theme = generateTheme(palette) as unknown as Record<string, unknown>;
+  lastPalette = palette;
+  broadcastTheme(palette);
+});
+
+function broadcastTheme(palette: TerminalPalette) {
+  const theme = currentTheme(palette) as unknown as Record<string, unknown>;
   let names: string[];
   try {
     names = fs.readdirSync(ipcSocketDir());
@@ -61,7 +80,41 @@ ipcMain.on(MESSAGE_CHANNEL, (event, message: ThemeMessage | TimingMessage | null
       },
     );
   }
-});
+}
+
+function page(window: Window, url: string) {
+  return createElement(WebView, {
+    key: window.transparent ? "clear" : "opaque",
+    ref: (handle: WebViewHandle | null) => {
+      window.view = handle;
+    },
+    src: url,
+    style: { width: "100%", height: "100%" },
+    preload: path.join(__dirname, "preload.js"),
+    proxy: window.request.proxy,
+    partition: window.request.partition,
+    clipboardRead: true,
+    onOpenWindow: "popup",
+    onContextMenu: () => {},
+    ...(window.transparent ? { browserWindowOptions: { transparent: true, backgroundColor: "#00000000" } } : {}),
+  });
+}
+
+function applyTransparency(on: boolean) {
+  const palette = lastPalette ?? cachedPalette();
+  if (palette) {
+    installTheme(palette, on);
+    installCss(palette, on);
+    setLiveTheme(currentTheme(palette, on));
+  }
+  for (const [root, window] of windows) {
+    if (window.transparent === on) continue;
+    const url = window.view?.state.url || window.request.url;
+    window.transparent = on;
+    window.view = null;
+    root.render(page(window, url));
+  }
+}
 
 function openWindow(request: OpenRequest, onClosed: (code: number) => void): Root {
   const root = createRoot({
@@ -74,16 +127,10 @@ function openWindow(request: OpenRequest, onClosed: (code: number) => void): Roo
       scheduleIdleExit();
     },
   });
+  const window: Window = { view: null, request, transparent: transparencyEnabled() };
   try {
-    const view = root.loadURL(request.url, {
-      preload: path.join(__dirname, "preload.js"),
-      proxy: request.proxy,
-      partition: request.partition,
-      clipboardRead: true,
-      onOpenWindow: "popup",
-      onContextMenu: () => {},
-    });
-    windows.set(root, { view, timingFile: request.timingFile });
+    root.render(page(window, request.url));
+    windows.set(root, window);
   } catch (error) {
     root.stop(1);
     throw error;
@@ -130,6 +177,11 @@ function serve() {
           case "shutdown":
             for (const open of windows.keys()) open.stop();
             setTimeout(() => app.exit(0), 100);
+            return;
+          case "transparency":
+            applyTransparency(request.on);
+            reply({ ok: true, pid: process.pid });
+            connection.end();
             return;
         }
       }),

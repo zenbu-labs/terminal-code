@@ -26,7 +26,7 @@ if (window === window.top) {
           marks,
         },
       });
-    } catch {}
+    } catch { }
   };
   let done = false;
   const settle = () => {

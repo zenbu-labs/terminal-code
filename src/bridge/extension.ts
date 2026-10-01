@@ -42,6 +42,7 @@ interface VscodeApi {
     openExternal(target: Uri): PromiseLike<boolean>;
   };
   window: {
+    showInformationMessage(message: string, ...items: string[]): PromiseLike<string | undefined>;
     showErrorMessage(
       message: string,
       options: { modal: boolean },
@@ -63,8 +64,12 @@ interface VscodeApi {
   };
   workspace: {
     getConfiguration(): {
-      update(key: string, value: unknown, target: unknown): unknown;
+      get(key: string): unknown;
+      update(key: string, value: unknown, target: unknown): PromiseLike<void>;
     };
+    onDidChangeConfiguration(
+      listener: (event: { affectsConfiguration(section: string): boolean }) => void,
+    ): Disposable;
     workspaceFolders?: readonly { uri: Uri }[];
     openTextDocument(uri: Uri): Promise<{ uri: Uri }>;
     updateWorkspaceFolders(start: number, deleteCount: number, ...folders: Array<{ uri: Uri }>): boolean;
@@ -86,6 +91,8 @@ export function bridgeMain(ctx: BridgeCtx): void {
   const LIVE_THEME_FILE = ctx.liveThemeFile;
   const QUIT_HINT = ctx.quitHint;
   const STARTUP_OPEN_FILE = ctx.startupOpenFile;
+  const DAEMON_SOCKET = ctx.daemonSocket;
+  const TRANSPARENCY_SETTING = ctx.transparencySetting;
 
   const VIEW_COMMANDS: Record<string, string> = { scm: "workbench.view.scm" };
 
@@ -112,6 +119,40 @@ export function bridgeMain(ctx: BridgeCtx): void {
 
   function quitTode(): void {
     void vscode.env.openExternal(vscode.Uri.parse("pixel://quit"));
+  }
+
+  function transparencyOn(): boolean {
+    return vscode.workspace.getConfiguration().get(TRANSPARENCY_SETTING) === true;
+  }
+
+  function syncTransparencyContext(): void {
+    void vscode.commands.executeCommand("setContext", "tode.transparent", transparencyOn());
+  }
+
+  function tellWindowProcess(on: boolean): void {
+    const connection = net.connect(DAEMON_SOCKET);
+    connection.on("error", () => {});
+    connection.on("connect", () => {
+      connection.end(JSON.stringify({ cmd: "transparency", on }) + NL);
+    });
+  }
+
+  function setTransparency(on: boolean): PromiseLike<void> {
+    return vscode.workspace.getConfiguration().update(TRANSPARENCY_SETTING, on, vscode.ConfigurationTarget.Global);
+  }
+
+  function offerReload(): void {
+    const on = transparencyOn();
+    void vscode.window
+      .showInformationMessage(
+        on
+          ? "Transparency is enabled. Reload the window for it to take effect."
+          : "Transparency is disabled. Reload the window for it to take effect.",
+        "Reload Window",
+      )
+      .then((picked) => {
+        if (picked) tellWindowProcess(on);
+      });
   }
 
   function applyThemeDocument(theme: BridgeTheme | null | undefined): void {
@@ -197,6 +238,11 @@ export function bridgeMain(ctx: BridgeCtx): void {
   }
 
   async function open(request: BridgeRequest, acknowledge: () => void): Promise<void> {
+    if (request.transparency !== undefined) {
+      await setTransparency(request.transparency);
+      acknowledge();
+      return;
+    }
     if (request.theme) {
       applyThemeDocument(request.theme);
       persistLiveTheme(request.theme);
@@ -273,6 +319,16 @@ export function bridgeMain(ctx: BridgeCtx): void {
 
   function activate(context: ExtensionContext): void {
     context.subscriptions.push(vscode.commands.registerCommand("tode.quit", quitTode));
+    context.subscriptions.push(
+      vscode.commands.registerCommand("tode.enableTransparency", () => setTransparency(true)),
+      vscode.commands.registerCommand("tode.disableTransparency", () => setTransparency(false)),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (!event.affectsConfiguration(TRANSPARENCY_SETTING)) return;
+        syncTransparencyContext();
+        offerReload();
+      }),
+    );
+    syncTransparencyContext();
 
     let confirmShowing = false;
     context.subscriptions.push(

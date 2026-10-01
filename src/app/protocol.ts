@@ -1,16 +1,26 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { INSTALL_ROOT, STATE_DIR } from "../runtime/paths";
+import { DATA_DIR, INSTALL_ROOT, STATE_DIR } from "../runtime/paths";
 
 export const DAEMON_DIR = path.join(STATE_DIR, "daemon");
 
-export function daemonSocket(): string {
-  let version = "dev";
+export function installVersion(): string {
   try {
-    version = fs.readFileSync(path.join(INSTALL_ROOT, "VERSION"), "utf8").trim() || "dev";
-  } catch {}
-  return path.join(DAEMON_DIR, `${version}.sock`);
+    return fs.readFileSync(path.join(INSTALL_ROOT, "VERSION"), "utf8").trim() || "dev";
+  } catch {
+    return "dev";
+  }
+}
+
+export function daemonSocket(): string {
+  return path.join(DAEMON_DIR, `${installVersion()}.sock`);
+}
+
+export function browserProfileDir(): string {
+  const key = crypto.createHash("sha1").update(INSTALL_ROOT).digest("hex").slice(0, 8);
+  return path.join(DATA_DIR, "browser", key);
 }
 
 export interface OpenRequest {
@@ -23,7 +33,12 @@ export interface OpenRequest {
   timingFile?: string;
 }
 
-export type Request = OpenRequest | { cmd: "resize" } | { cmd: "close" } | { cmd: "shutdown" };
+export type Request =
+  | OpenRequest
+  | { cmd: "resize" }
+  | { cmd: "close" }
+  | { cmd: "shutdown" }
+  | { cmd: "transparency"; on: boolean };
 
 export type Reply = { ok: true; pid: number } | { ok: false; error: string } | { event: "closed"; code: number };
 
