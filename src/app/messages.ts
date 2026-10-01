@@ -1,16 +1,4 @@
-import type { TerminalTheme } from "./api";
-
-export type PreloadCtx = Record<string, never>;
-
-export interface MainCtx {
-  socketDir: string;
-  timingFile: string;
-  modules: {
-    livesync: string;
-    generate: string;
-    ipc: string;
-  };
-}
+import type { TerminalTheme } from "@zenbu-labs/pixel/preload";
 
 export interface ThemeMessage {
   type: "theme";
@@ -30,3 +18,5 @@ export interface TimingMessage {
   type: "timing";
   page: PageTiming;
 }
+
+export const MESSAGE_CHANNEL = "tode:message";

@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { spawn } from "node:child_process";
 
 import { stopServer } from "./codeserver/server";
 import { FONT_ASSET, assetPath, userFontsDir } from "./profile";
@@ -11,11 +10,8 @@ import {
   DATA_DIR,
   DEFAULT_INSTALL_ROOT,
   INSTALL_ROOT,
-  RUNTIME_DIR,
   STATE_DIR,
-  VENDOR_DIR,
 } from "./runtime/paths";
-import { PINNED_VERSION } from "./runtime/release";
 import { ghosttyConfigDir, reloadGhostty, removeFreed } from "./shortcuts/backends/ghostty";
 
 
@@ -27,14 +23,6 @@ function confirm(question: string): Promise<boolean> {
       resolve(/^y(es)?$/i.test(answer.trim()));
     });
   });
-}
-
-function localBrowserBin(): string | null {
-  const candidates = [
-    path.join(VENDOR_DIR, "terminal-browser", "bin", "terminal-browser"),
-    path.join(RUNTIME_DIR, "terminal-browser", PINNED_VERSION, "bin", "terminal-browser"),
-  ];
-  return candidates.find((bin) => fs.existsSync(bin)) ?? null;
 }
 
 function removeDir(dir: string): boolean {
@@ -99,14 +87,6 @@ export async function uninstallCommand(args: string[]): Promise<number> {
   const stop = spinner("uninstalling");
 
   stopServer();
-  const browser = localBrowserBin();
-  if (browser) {
-    await new Promise<void>((resolve) => {
-      const child = spawn(browser, ["shutdown"], { stdio: "ignore" });
-      child.on("error", () => resolve());
-      child.on("exit", () => resolve());
-    });
-  }
 
   if (removeFreed(ghosttyConfigDir())) reloadGhostty();
 

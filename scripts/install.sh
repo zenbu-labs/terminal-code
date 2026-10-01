@@ -67,7 +67,7 @@ chmod +x "$BIN_HOME/tode"
 # the vendored electron needs the usual chromium system libraries; say which
 # ones are missing rather than failing later with a loader error
 if [ "$(uname -s)" = Linux ]; then
-  MISSING="$(ldd "$APP/vendor/terminal-browser/electron/electron" 2>/dev/null | awk '/not found/{print $1}' | sort -u || true)"
+  MISSING="$(ldd "$APP/node_modules/@zenbu-labs/pixel/electron/dist/pixel" 2>/dev/null | awk '/not found/{print $1}' | sort -u || true)"
   if [ -n "$MISSING" ]; then
     echo "warning: missing system libraries:" >&2
     printf '  %s\n' $MISSING >&2

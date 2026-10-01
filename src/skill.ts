@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { BRIDGE_DIR, STARTUP_OPEN_FILE } from "./bridge";
-import { ipcSocketDir } from "./browserglue";
+import { ipcSocketDir } from "./ipc";
 import { CSS_FILE, PORT_FILE, STATE_FILE, currentServer, origin } from "./codeserver/server";
 import { CODE_SERVER_VERSION, codeServerRoot, installedCodeServer } from "./codeserver/vendored";
 import {
@@ -18,16 +18,13 @@ import {
   VSCODE_DIR,
 } from "./profile";
 import {
-  BROWSER_HOME,
   CACHE_DIR,
   DATA_DIR,
   INSTALL_ROOT,
   LOGS_DIR,
-  RUNTIME_DIR,
   STATE_DIR,
-  VENDOR_DIR,
 } from "./runtime/paths";
-import { PINNED_VERSION } from "./runtime/release";
+import { pixelVersion } from "./runtime/launcher";
 import { ghosttyConfigDir, isGhostty } from "./shortcuts/backends/ghostty";
 import { isKitty, kittyConfigDir } from "./shortcuts/backends/kitty";
 import { DECISIONS_FILE } from "./shortcuts/store";
@@ -48,19 +45,6 @@ function listDir(dir: string): string[] {
   }
 }
 
-/** Everything here is looked at, never resolved: a skill dump must not be the
- * thing that starts downloading a runtime. */
-function runtimeSources(): string {
-  const sources: string[] = [];
-  const override = process.env.TODE_TERMINAL_BROWSER_BIN;
-  if (override) sources.push(`override via TODE_TERMINAL_BROWSER_BIN at ${override}`);
-  if (fs.existsSync(path.join(VENDOR_DIR, "terminal-browser")))
-    sources.push(`vendored in ${path.join(VENDOR_DIR, "terminal-browser")}`);
-  if (fs.existsSync(path.join(RUNTIME_DIR, "terminal-browser", PINNED_VERSION)))
-    sources.push(`fetched at ${path.join(RUNTIME_DIR, "terminal-browser", PINNED_VERSION)}`);
-  if (sources.length === 0) return "not on disk yet — the next open downloads it";
-  return sources.join("; ");
-}
 
 export async function skillText(): Promise<string> {
   const version = read(path.join(INSTALL_ROOT, "VERSION"));
@@ -98,7 +82,7 @@ description: Working knowledge of this machine's tode install (the terminal code
 
 tode is a code editor that runs in the terminal: one warm code-server serves
 the VS Code workbench, an injecting proxy sits in front of it, and
-terminal-browser draws each window as a terminal pane. Everything below was
+pixel draws each window as a terminal pane. Everything below was
 resolved on this machine when \`tode --skill\` ran — env overrides are already
 applied, and the state section is live. Re-run it rather than trusting a copy.
 
@@ -106,7 +90,7 @@ applied, and the state section is live. Re-run it rather than trusting a copy.
 
 - install root: ${INSTALL_ROOT} — ${install}
 - shim: ${shim} ${fs.existsSync(shim) ? "(present)" : "(absent — run installs go through node directly)"}
-- terminal-browser pin ${PINNED_VERSION}: ${runtimeSources()}
+- pixel ${pixelVersion()} (npm dependency; windows are pixel apps)
 - code-server ${CODE_SERVER_VERSION}: ${codeServer ?? `not fetched yet — the first open puts it under ${codeServerRoot()}`}
 - daemon: ${daemon}
 - open windows: ${sockets.length} socket(s) in ${ipcSocketDir()}${sockets.length ? ` — ${sockets.join(", ")}` : ""}
@@ -187,12 +171,9 @@ ${STARTUP_OPEN_FILE} is a one-shot marker with the parts of an open the url cann
 ## Homes on disk
 
 - data ${DATA_DIR} — profile, theme, generated scripts, fetched code-server
-  (${path.join(DATA_DIR, "code-server")}) and terminal-browser trees (${RUNTIME_DIR})
+  (${path.join(DATA_DIR, "code-server")})
 - state ${STATE_DIR} — daemon state, logs, ipc sockets, install receipt (install.json)
 - cache ${CACHE_DIR} — converted app icons and the browser's cache
-- terminal-browser gets its own homes so the user's are untouched:
-  data ${BROWSER_HOME.data}, state ${BROWSER_HOME.state}, cache ${BROWSER_HOME.cache},
-  chromium ${BROWSER_HOME.appData}
 - \`tode --uninstall\` removes all of the above plus the install root, shim,
   font and ghostty overrides.
 
@@ -201,9 +182,7 @@ ${STARTUP_OPEN_FILE} is a one-shot marker with the parts of an open the url cann
 - TODE_IPC — set inside tode windows; the window's socket
 - TODE_INSTALL_ROOT — overrides the install tree
 - TODE_CODE_SERVER — use your own code-server binary
-- TODE_TERMINAL_BROWSER_BIN — use your own terminal-browser
-- TODE_RELEASE_ORIGIN — where upgrades and runtime downloads come from
-- TODE_BROWSER_DATA/_STATE/_CACHE/_RUN/_APPDATA — move the browser homes
+- TODE_RELEASE_ORIGIN — where upgrades come from
 - XDG_DATA_HOME / XDG_STATE_HOME / XDG_CACHE_HOME / XDG_BIN_HOME — move tode's homes and the shim
 
 ## Commands

@@ -2,15 +2,6 @@ import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 
-/** code-server in front of a proxy that puts tode's css into the workbench page.
- *
- * The page needs the css before its first paint, and reaching in over the
- * devtools protocol after the fact means a visible flash, so the html is edited
- * on its way through instead. Everything that is not the document is piped
- * straight across. Nothing but css goes in: the workbench's startup timing
- * lives in the browser preload (src/browser/preload.ts), and links that leave
- * the workbench open as terminal-browser's own popups over the pane
- * (--open-tabs-in-popup-stack). */
 export const FONT_ROUTE = "/__tode/font.ttf";
 
 export function createInjector(

@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 
 export interface OpenFile {
   path: string;
@@ -67,4 +69,12 @@ export function parseGoto(argument: string): OpenFile {
     line: Number(match[2]),
     column: match[3] ? Number(match[3]) : 1,
   };
+}
+
+export function ipcSocketDir(): string {
+  const stateHome =
+    process.env.XDG_STATE_HOME && path.isAbsolute(process.env.XDG_STATE_HOME)
+      ? process.env.XDG_STATE_HOME
+      : path.join(os.homedir(), ".local", "state");
+  return path.join(stateHome, "tode", "ipc");
 }

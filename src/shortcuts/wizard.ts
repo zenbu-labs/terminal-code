@@ -1,11 +1,10 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
 import { builtinKeybindings, installKeybindings, readPalette, removalMasked } from "../profile";
 import type { TerminalPalette } from "../terminal/osc";
 import { DATA_DIR } from "../runtime/paths";
-import { resolveRuntimeWithProgress } from "../runtime/release";
+import { Pane } from "../launch";
 import { extensionHolder, importedConflicts, importedHolder } from "./imported";
 import { wrap } from "./prompt";
 import { providerFor } from "./provider";
@@ -81,11 +80,6 @@ export function autoApplyShared(provider: ShortcutProvider | null = providerFor(
   } catch { }
 }
 
-/** Whoever holds a chord on the editor side, as a claimant the page can seat
- * in the duel: an imported keybinding, one of tode's own builtins, or an
- * extension's contribution. All three resolve through the same claim
- * decisions, because a user-level removal entry is written after every one of
- * their rules and masks whichever kind it names. */
 function claimHolder(
   chord: string,
 ): { command: string; claimant: string; describes: string; when?: string } | null {
@@ -108,9 +102,6 @@ function claimHolder(
   }
   const extension = extensionHolder(chord);
   if (extension) return extension;
-  // the workbench defaults hold chords too — the scan counts them as
-  // conflicts, so picking a chord must vet against them the same way, or a
-  // move lands somewhere the very next scan calls contested
   const fallback = defaultBinding(chord);
   if (fallback && !removalMasked(chord, fallback.command)) {
     return {
@@ -507,31 +498,17 @@ async function runManager(
   function state0() {
     return opened.state;
   }
-  const runtime = await resolveRuntimeWithProgress();
-  const child = spawn(
-    runtime.bin,
-    [
-      "open",
-      `http://127.0.0.1:${manager.port}`,
-      "--app-mode"
-    ],
-    { stdio: "inherit" },
-  );
+  const pane = new Pane();
+  pane.open(`http://127.0.0.1:${manager.port}`);
   void manager.done.then(() => {
-    if (!state.navigated) child.kill("SIGTERM");
+    if (!state.navigated) pane.close();
   });
-  const code = await new Promise<number>((resolve) => {
-    child.on("error", (error) => {
-      process.stderr.write(`could not start terminal-browser: ${error.message}\n`);
-      resolve(1);
-    });
-    child.on("exit", (exit) => resolve(exit ?? 0));
-  });
+  const code = await pane.exited();
   manager.close();
   const served = manager.served();
   if (!served) {
     process.stderr.write(
-      `tode: the shortcuts wizard never reached the screen (terminal-browser exited ${code})\n`,
+      `tode: the shortcuts wizard never reached the screen (exited ${code})\n`,
     );
   }
   return {

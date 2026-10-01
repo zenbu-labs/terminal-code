@@ -12,17 +12,11 @@ TARGET="${3:-darwin-arm64}"
 OUT="$ROOT/dist-release"
 STAGE="$OUT/tode"
 
-# The terminal-browser build tode is written against, read from the source so
-# the pin lives in exactly one place.
-PINNED="$(node -e '
-  const fs = require("fs");
-  const src = fs.readFileSync(process.argv[1], "utf8");
-  const found = src.match(/PINNED_VERSION\s*=\s*"([^"]+)"/);
-  if (!found) { console.error("no PINNED_VERSION in release.ts"); process.exit(1); }
-  console.log(found[1]);
-' "$ROOT/src/runtime/release.ts")"
+HOST="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/aarch64/arm64/; s/x86_64/x64/')"
+[ "$HOST" = "$TARGET" ] || { echo "building $TARGET on a $HOST machine is not possible" >&2; exit 1; }
+PIXEL_VERSION="$(node -p 'require("./node_modules/@zenbu-labs/pixel/package.json").version')"
 
-echo "tode $VERSION ($CHANNEL) for $TARGET, terminal-browser $PINNED"
+echo "tode $VERSION ($CHANNEL) for $TARGET, pixel $PIXEL_VERSION"
 
 rm -rf "$OUT"
 mkdir -p "$STAGE"
@@ -37,31 +31,37 @@ cp -R "$ROOT/assets" "$STAGE/assets"
 echo "$VERSION" > "$STAGE/VERSION"
 echo "$CHANNEL" > "$STAGE/CHANNEL"
 
+echo "==> vendoring dependencies"
+cp "$ROOT/package.json" "$ROOT/package-lock.json" "$STAGE/"
+(cd "$STAGE" && npm ci --omit=dev)
+rm -f "$STAGE/package-lock.json"
+
 # The shim the installer copies to $XDG_BIN_HOME. It runs the CLI with the
 # vendored electron in node mode, so an install needs no node of its own. On
 # macOS the helper binary is used: its Info.plist sets LSUIElement, so no icon
-# ever appears in the Dock while the CLI runs. The linux build unpacks to the
-# bare electron layout, where the binary is simply electron/electron.
+# ever appears in the Dock while the CLI runs.
 mkdir -p "$STAGE/bin"
 case "$TARGET" in
   darwin-*)
     cat > "$STAGE/bin/tode" <<'SHIM'
 #!/bin/sh
 ROOT="${TODE_INSTALL_ROOT:-$HOME/.local/lib/tode}"
-APP="$ROOT/vendor/terminal-browser/electron/terminal-browser.app/Contents"
+APP="$ROOT/node_modules/@zenbu-labs/pixel/electron/dist/Electron.app/Contents"
 HELPER="$APP/Frameworks/Electron Helper.app/Contents/MacOS/Electron Helper"
-[ -x "$HELPER" ] || HELPER="$APP/MacOS/terminal-browser"
+[ -x "$HELPER" ] || HELPER="$APP/MacOS/pixel"
 export ELECTRON_RUN_AS_NODE=1
 exec "$HELPER" "$ROOT/dist/main.js" "$@"
 SHIM
+    ELECTRON_PIECE="$STAGE/node_modules/@zenbu-labs/pixel/electron/dist/Electron.app"
     ;;
   linux-*)
     cat > "$STAGE/bin/tode" <<'SHIM'
 #!/bin/sh
 ROOT="${TODE_INSTALL_ROOT:-$HOME/.local/lib/tode}"
 export ELECTRON_RUN_AS_NODE=1
-exec "$ROOT/vendor/terminal-browser/electron/electron" "$ROOT/dist/main.js" "$@"
+exec "$ROOT/node_modules/@zenbu-labs/pixel/electron/dist/pixel" "$ROOT/dist/main.js" "$@"
 SHIM
+    ELECTRON_PIECE="$STAGE/node_modules/@zenbu-labs/pixel/electron/dist/pixel"
     ;;
   *)
     echo "no shim recipe for $TARGET" >&2
@@ -70,50 +70,9 @@ SHIM
 esac
 chmod +x "$STAGE/bin/tode"
 
-echo "==> fetching terminal-browser $PINNED"
-# The pinned installer carries the download url and the hash, so one request is
-# enough to fetch the build and know the bytes are right.
-INSTALLER="$(curl -fsSL "https://terminal-browser.sh/install/v/$PINNED")"
-field() { printf '%s\n' "$INSTALLER" | sed -n "s/^$1=\"\([^\"]*\)\".*/\1/p" | head -1; }
-# Newer installers carry a table of "target url sha256 size"; older ones, and
-# the single-target ones, carry DOWNLOAD_URL and SHA256 at the top instead.
-# The first row rides on the PLATFORMS=" line itself, so the wrapper has to
-# come off before rows can be matched by their first column.
-TB_TABLE="$(printf '%s\n' "$INSTALLER" | sed -n '/^PLATFORMS="/,/"$/p' | sed 's/^PLATFORMS="//; s/"$//')"
-TB_ROW="$(printf '%s\n' "$TB_TABLE" | awk -v t="$TARGET" '$1 == t && NF == 4')"
-if [ -n "$TB_ROW" ]; then
-  TB_URL="$(printf '%s\n' "$TB_ROW" | awk '{print $2}')"
-  TB_SHA="$(printf '%s\n' "$TB_ROW" | awk '{print $3}')"
-else
-  TB_URL="$(field DOWNLOAD_URL)"
-  TB_SHA="$(field SHA256)"
-  case "$TB_URL" in
-    *"$TARGET"*) ;;
-    *) echo "the pinned installer only offers $TB_URL, which is not $TARGET" >&2; exit 1 ;;
-  esac
-fi
-[ -n "$TB_URL" ] || { echo "could not resolve a terminal-browser url for $TARGET" >&2; exit 1; }
-
-TB_TAR="$OUT/terminal-browser.tar.gz"
-curl -fL --retry 3 --retry-delay 2 --progress-bar "$TB_URL" -o "$TB_TAR"
-if command -v sha256sum >/dev/null 2>&1; then CHECK="sha256sum -c -"; else CHECK="shasum -a 256 -c -"; fi
-if [ -n "$TB_SHA" ]; then
-  echo "$TB_SHA  $TB_TAR" | $CHECK >/dev/null \
-    || { echo "terminal-browser download did not match its hash" >&2; exit 1; }
-fi
-mkdir -p "$STAGE/vendor/terminal-browser"
-tar -xzf "$TB_TAR" -C "$STAGE/vendor/terminal-browser" --strip-components 1
-rm -f "$TB_TAR"
-
-# resolveRuntime() checks for these two before it trusts the tree; the electron
-# piece it looks for differs per platform
-case "$TARGET" in
-  darwin-*) ELECTRON_PIECE="$STAGE/vendor/terminal-browser/electron/terminal-browser.app" ;;
-  linux-*)  ELECTRON_PIECE="$STAGE/vendor/terminal-browser/electron/electron" ;;
-esac
-[ -f "$STAGE/vendor/terminal-browser/cli/dist/main.js" ] \
+[ -f "$STAGE/node_modules/@zenbu-labs/pixel/dist/bootstrap.js" ] \
   && [ -e "$ELECTRON_PIECE" ] \
-  || { echo "the unpacked terminal-browser is missing pieces" >&2; exit 1; }
+  || { echo "the vendored pixel is missing pieces" >&2; exit 1; }
 
 echo "==> packing"
 TARBALL="$OUT/tode-$TARGET.tar.gz"
@@ -134,7 +93,7 @@ cat > "$OUT/manifest-$TARGET.json" <<EOF
   "file": "$(basename "$TARBALL")",
   "sha256": "$SHA256",
   "size": $SIZE,
-  "terminalBrowser": "$PINNED",
+  "pixel": "$PIXEL_VERSION",
   "published": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 EOF

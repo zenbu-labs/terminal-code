@@ -1,31 +1,21 @@
-import type { TerminalBrowserApi } from "./api";
-import type { PreloadCtx, ThemeMessage, TimingMessage } from "./ctx";
+import { ipcRenderer } from "electron";
+import type { ThemeMessage, TimingMessage } from "./messages";
 
-declare const terminalBrowser: TerminalBrowserApi;
+const CHANNEL = "tode:message";
+const deliver = (message: ThemeMessage | TimingMessage) => ipcRenderer.send(CHANNEL, message);
 
-export function preloadMain(_ctx: PreloadCtx): void {
-  const { ipcRenderer } = require("electron") as {
-    ipcRenderer: { send(channel: string, message: unknown): void };
-  };
-  const deliver = (message: unknown) => ipcRenderer.send("tode:message", message);
+pixel.onTheme((theme) => deliver({ type: "theme", colors: theme }));
 
-  terminalBrowser.onTheme((theme) => {
-    const message: ThemeMessage = { type: "theme", colors: theme };
-    deliver(message);
-  });
-
-  if (window !== window.top) return;
+if (window === window.top) {
   const send = () => {
     try {
-      const nav = performance.getEntriesByType("navigation")[0] as
-        | PerformanceNavigationTiming
-        | undefined;
+      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
       const marks: Record<string, number> = {};
       for (const mark of performance.getEntriesByType("mark")) {
         if (mark.name.startsWith("code/")) marks[mark.name] = Math.round(mark.startTime);
       }
       if (Object.keys(marks).length === 0) return;
-      const message: TimingMessage = {
+      deliver({
         type: "timing",
         page: {
           at: Date.now(),
@@ -35,8 +25,7 @@ export function preloadMain(_ctx: PreloadCtx): void {
           loadEnd: Math.round(nav?.loadEventEnd ?? 0),
           marks,
         },
-      };
-      deliver(message);
+      });
     } catch {}
   };
   let done = false;

@@ -2,16 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { DATA_DIR } from "../runtime/paths";
-import { fetchVerified, targetTriple, unpack } from "../runtime/release";
+import { fetchVerified, targetTriple, unpack } from "../runtime/fetch";
 
-/** The code-server build tode is written against. The workbench tode injects
- * into is version-specific, so it pins rather than taking whatever happens to
- * be installed. Bump the version and the hashes together — they come from the
- * digests GitHub publishes on the release assets. */
 export const CODE_SERVER_VERSION = "4.132.0";
 
-/** tode target -> the name code-server releases under, and the sha256 GitHub
- * reports for that asset. */
 const CODE_SERVER_BUILDS: Record<string, { asset: string; sha256: string; size: number }> = {
   "darwin-x64": {
     asset: "macos-amd64",

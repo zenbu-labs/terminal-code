@@ -10,16 +10,20 @@
     "build:pages": "TODE_PAGE=shortcuts vite build && TODE_PAGE=import vite build",
     "dist": "bash scripts/dist.sh",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/pages/tsconfig.json",
-    "test": "npm run -s build && node --test \"test/*.test.js\""
+    "test": "npm run -s build && node --test \"test/*.test.js\"",
+    "start": "npm run -s build && node dist/main.js"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^6.0.5",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react-dom": "^18.3.1",
     "typescript": "^5.5.0",
     "vite": "^8.2.1"
+  },
+  "dependencies": {
+    "@zenbu-labs/pixel": "0.0.21",
+    "react": "^18.3.1"
   }
 }

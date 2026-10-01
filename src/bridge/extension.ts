@@ -111,7 +111,7 @@ export function bridgeMain(ctx: BridgeCtx): void {
   const NL = String.fromCharCode(10);
 
   function quitTode(): void {
-    void vscode.env.openExternal(vscode.Uri.parse("terminal-browser://quit"));
+    void vscode.env.openExternal(vscode.Uri.parse("pixel://quit"));
   }
 
   function applyThemeDocument(theme: BridgeTheme | null | undefined): void {

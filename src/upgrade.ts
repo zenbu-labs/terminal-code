@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { DEFAULT_INSTALL_ROOT, INSTALL_ROOT, STATE_DIR } from "./runtime/paths";
-import { targetTriple } from "./runtime/release";
+import { targetTriple } from "./runtime/fetch";
 
 const ORIGIN = process.env.TODE_RELEASE_ORIGIN ?? "https://tode.sh/install";
 
@@ -18,8 +18,6 @@ export interface Build {
   url: string;
 }
 
-/** What the release worker serves: one entry per target, each carrying its
- * own download url. */
 interface Manifest {
   version: string;
   channel: string;
@@ -92,8 +90,6 @@ async function fetchBuild(build: Build, onProgress?: (fraction: number) => void)
   return tarball;
 }
 
-/** Unpacks beside the install and renames over it, so a failure at any point
- * leaves the working install exactly as it was. */
 function swapIn(tarball: string, root: string) {
   const staging = `${root}.new`;
   fs.rmSync(staging, { recursive: true, force: true });

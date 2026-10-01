@@ -70,10 +70,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # tode itself is only TypeScript, and the browser is fetched rather than
-        # compiled, so one Linux runner can build every target's tarball.
-        target: [darwin-x64, darwin-arm64, linux-x64, linux-arm64]
-    runs-on: ubuntu-latest
+        include:
+          - target: darwin-arm64
+            runner: macos-14
+          - target: darwin-x64
+            runner: macos-15-intel
+          - target: linux-x64
+            runner: ubuntu-latest
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
