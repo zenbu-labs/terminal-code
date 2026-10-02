@@ -25,5 +25,8 @@ npm-debug.log*
 # test/coverage
 coverage/
 
+# dev harnesses
+.dev-ui-sandbox/
+
 # release artifacts
 dist-release/

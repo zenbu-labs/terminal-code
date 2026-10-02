@@ -175,7 +175,7 @@ ${STARTUP_OPEN_FILE} is a one-shot marker with the parts of an open the url cann
 - state ${STATE_DIR} — daemon state, logs, ipc sockets, install receipt (install.json)
 - cache ${CACHE_DIR} — converted app icons and the browser's cache
 - \`tode --uninstall\` removes all of the above plus the install root, shim,
-  font and ghostty overrides.
+  font and ghostty/kitty overrides.
 
 ## Environment variables
 
