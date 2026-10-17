@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { kill } from "../app/control";
 import { DATA_DIR, LOGS_DIR, STATE_DIR } from "../runtime/paths";
+import { SESSION_COOKIE, enterUrl, newSecret } from "./inject";
 import { CODE_SERVER_VERSION, ensureCodeServer, installedCodeServer, narrateFetch } from "./vendored";
 
 const VSCODE_DIR = path.join(DATA_DIR, "vscode");
@@ -16,6 +17,7 @@ export interface ServerState {
   /** the injecting proxy the browser actually talks to */
   injectorPid: number;
   injectorPort: number;
+  secret: string;
   version: string;
   startedAt: number;
 }
@@ -51,7 +53,8 @@ function readState(): ServerState | null {
 
 function writeState(state: ServerState) {
   fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
-  fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
+  fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+  fs.chmodSync(STATE_FILE, 0o600);
 }
 
 function running(pid: number): boolean {
@@ -95,6 +98,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function currentServer(): Promise<ServerState | null> {
   const state = readState();
   if (!state || !running(state.pid) || !running(state.injectorPid)) return null;
+  if (!state.secret) return null;
   const [up, proxied] = await Promise.all([answering(state.port), answering(state.injectorPort)]);
   return up && proxied ? state : null;
 }
@@ -122,19 +126,22 @@ export function ensureServer(): Promise<ServerState> {
 async function startServer(): Promise<ServerState> {
   const existing = await currentServer();
   if (existing) return existing;
+  if (readState()?.secret === undefined) await stopServer();
 
   const bin = await ensureCodeServer(narrateFetch(`code-server ${CODE_SERVER_VERSION}`));
   // asked now, awaited after the injector is up — the version is a detail for
   // `tode daemon status`, not something the boot should stall on
   const version = serverVersion(bin);
   const port = await freePort();
+  const secret = newSecret();
+  const codeServerSecret = newSecret();
   fs.mkdirSync(LOGS_DIR, { recursive: true });
   const log = fs.openSync(path.join(LOGS_DIR, "code-server.log"), "a");
   const child = spawn(
     bin,
     [
       "--auth",
-      "none",
+      "password",
       "--bind-addr",
       `127.0.0.1:${port}`,
       "--user-data-dir",
@@ -154,6 +161,8 @@ async function startServer(): Promise<ServerState> {
       stdio: ["ignore", log, log],
       env: {
         ...process.env,
+        PASSWORD: undefined,
+        HASHED_PASSWORD: codeServerSecret,
         EXTENSIONS_GALLERY: JSON.stringify({
           serviceUrl: "https://marketplace.visualstudio.com/_apis/public/gallery",
           itemUrl: "https://marketplace.visualstudio.com/items",
@@ -166,15 +175,16 @@ async function startServer(): Promise<ServerState> {
   child.unref();
   if (!child.pid) throw new Error("could not start code-server");
 
-  const injector = await startInjector(port, log);
+  const injector = await startInjector(port, log, { session: secret, codeServer: codeServerSecret });
   void codeServerReady(port, child.pid).then((up) => {
-    if (up) void warmUp(injector.port);
+    if (up) void warmUp(injector.port, secret);
   });
   const state = {
     pid: child.pid,
     port,
     injectorPid: injector.pid,
     injectorPort: injector.port,
+    secret,
     version: await version,
     startedAt: Date.now(),
   };
@@ -214,15 +224,21 @@ export function available(port: number): Promise<boolean> {
 export async function startInjector(
   upstream: number,
   log: number,
+  auth: { session: string; codeServer: string },
   portFile = PORT_FILE,
 ): Promise<{ pid: number; port: number }> {
   const port = await injectorPort(portFile);
-  // interesting? a script?
   const script = path.join(__dirname, "injector-main.js");
   const font = fontAsset();
+  // the secrets travel in the environment: arguments show up in `ps` for everyone
   const child = spawn(process.execPath, [script, String(upstream), String(port), CSS_FILE, font], {
     detached: true,
     stdio: ["ignore", log, log],
+    env: {
+      ...process.env,
+      TODE_SESSION_SECRET: auth.session,
+      TODE_CODE_SERVER_SECRET: auth.codeServer,
+    },
   });
   child.unref();
   if (!child.pid) throw new Error("could not start the css injector");
@@ -235,16 +251,19 @@ export async function startInjector(
   throw new Error("the css injector did not start within 10s");
 }
 
-async function warmUp(port: number): Promise<void> {
+async function warmUp(port: number, secret: string): Promise<void> {
+  const headers = { cookie: `${SESSION_COOKIE}=${secret}` };
   try {
     const page = await fetch(`http://127.0.0.1:${port}/`, {
-      headers: { accept: "text/html" },
+      headers: { ...headers, accept: "text/html" },
     });
     const html = await page.text();
     const assets = [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((m) => m[1]);
     await Promise.all(
       assets.slice(0, 4).map((asset) =>
-        fetch(new URL(asset, `http://127.0.0.1:${port}/`)).then((r) => r.arrayBuffer()).catch(() => null),
+        fetch(new URL(asset, `http://127.0.0.1:${port}/`), { headers })
+          .then((r) => r.arrayBuffer())
+          .catch(() => null),
       ),
     );
   } catch {}
@@ -261,4 +280,8 @@ export async function stopServer(): Promise<boolean> {
 
 export function origin(state: ServerState): string {
   return `http://127.0.0.1:${state.injectorPort}/`;
+}
+
+export function windowUrl(state: ServerState, workbench: string): string {
+  return enterUrl(origin(state), state.secret, workbench);
 }

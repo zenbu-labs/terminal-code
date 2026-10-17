@@ -5,7 +5,17 @@ const os = require("node:os");
 const path = require("node:path");
 const { test } = require("node:test");
 
-const { createInjector, injectedCss, FONT_ROUTE } = require("../dist/codeserver/inject.js");
+const {
+  createInjector,
+  injectedCss,
+  enterUrl,
+  mintTicket,
+  ticketValid,
+  FONT_ROUTE,
+  ENTER_ROUTE,
+  SESSION_COOKIE,
+  CODE_SERVER_COOKIE,
+} = require("../dist/codeserver/inject.js");
 
 const listen = (server) =>
   new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
@@ -40,12 +50,12 @@ function fakeUpstream(handler) {
   return { server, seen };
 }
 
-async function withPair(handler, run) {
+async function withPair(handler, run, auth) {
   const { server: upstream, seen } = fakeUpstream(handler);
   const upstreamPort = await listen(upstream);
   const cssFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tode-css-")), "inject.css");
   fs.writeFileSync(cssFile, "html{background:#101010 !important;}");
-  const proxy = createInjector(upstreamPort, cssFile);
+  const proxy = createInjector(upstreamPort, cssFile, undefined, undefined, auth);
   const proxyPort = await listen(proxy);
   try {
     await run({ proxyPort, upstreamPort, seen, cssFile });
@@ -261,6 +271,175 @@ test("a request waits while code-server is still booting, then goes through", as
     await close(proxy);
     await close(revived);
   }
+});
+
+/** a raw http exchange, for headers fetch() will not let a caller forge */
+function rawRequest(port, text) {
+  const net = require("node:net");
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(port, "127.0.0.1", () => socket.write(text));
+    let received = "";
+    socket.on("data", (chunk) => {
+      received += chunk.toString("utf8");
+    });
+    socket.on("end", () => resolve(received));
+    socket.on("close", () => resolve(received));
+    socket.on("error", reject);
+    setTimeout(() => {
+      socket.destroy();
+      resolve(received);
+    }, 1500);
+  });
+}
+
+const htmlUpstream = (_request, response) => {
+  response.writeHead(200, { "content-type": "text/html" });
+  response.end("<html><head></head><body>ok</body></html>");
+};
+
+test("a request whose host is not this port is refused before anything is forwarded", async () => {
+  await withPair(htmlUpstream, async ({ proxyPort, seen }) => {
+    const reply = await rawRequest(
+      proxyPort,
+      `GET / HTTP/1.1\r\nHost: attacker.example\r\nConnection: close\r\n\r\n`,
+    );
+    assert.match(reply, /^HTTP\/1.1 403/);
+    assert.equal(seen.length, 0, "code-server never hears about it");
+  });
+});
+
+test("a cross-origin request is refused, even though the host is right", async () => {
+  await withPair(htmlUpstream, async ({ proxyPort, seen }) => {
+    const { status } = await get(proxyPort, { origin: "https://attacker.example" });
+    assert.equal(status, 403);
+    assert.equal(seen.length, 0);
+  });
+});
+
+test("a cross-origin websocket upgrade never reaches code-server (CVE-2023-26114 stays fixed)", async () => {
+  await withPair(htmlUpstream, async ({ proxyPort, seen }) => {
+    const reply = await rawRequest(
+      proxyPort,
+      `GET /ws HTTP/1.1\r\nHost: attacker.example\r\nOrigin: https://attacker.example\r\n` +
+        `Upgrade: websocket\r\nConnection: Upgrade\r\n\r\n`,
+    );
+    assert.match(reply, /^HTTP\/1.1 403/);
+    assert.doesNotMatch(reply, /101 Switching Protocols/);
+    assert.equal(seen.length, 0);
+  });
+});
+
+test("localhost is as good as 127.0.0.1 for the host and origin", async () => {
+  await withPair(htmlUpstream, async ({ proxyPort, seen }) => {
+    const reply = await rawRequest(
+      proxyPort,
+      `GET / HTTP/1.1\r\nHost: localhost:${proxyPort}\r\nOrigin: http://localhost:${proxyPort}\r\n` +
+        `Connection: close\r\n\r\n`,
+    );
+    assert.match(reply, /^HTTP\/1.1 200/);
+    assert.equal(seen.length, 1);
+  });
+});
+
+const AUTH = { session: "s".repeat(64), codeServer: "c".repeat(64) };
+
+test("with a secret, nothing is served until the window has entered", async () => {
+  await withPair(
+    htmlUpstream,
+    async ({ proxyPort, seen }) => {
+      const { status } = await get(proxyPort, { accept: "text/html" });
+      assert.equal(status, 401);
+      const wrong = await get(proxyPort, { cookie: `${SESSION_COOKIE}=${"x".repeat(64)}` });
+      assert.equal(wrong.status, 401);
+      assert.equal(seen.length, 0);
+      const upgrade = await rawRequest(
+        proxyPort,
+        `GET /ws HTTP/1.1\r\nHost: 127.0.0.1:${proxyPort}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n`,
+      );
+      assert.match(upgrade, /^HTTP\/1.1 401/);
+      assert.equal(seen.length, 0);
+    },
+    AUTH,
+  );
+});
+
+test("the entry url trades a ticket for the session cookie and sends the window on", async () => {
+  await withPair(
+    htmlUpstream,
+    async ({ proxyPort, seen }) => {
+      const origin = `http://127.0.0.1:${proxyPort}/`;
+      const url = enterUrl(origin, AUTH.session, `${origin}?folder=%2Ftmp%2Fproject`);
+      assert.ok(url.startsWith(`${origin.slice(0, -1)}${ENTER_ROUTE}?`));
+      assert.ok(!url.includes(AUTH.session), "the secret itself never goes in a url");
+      const response = await fetch(url, { redirect: "manual" });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get("location"), "/?folder=%2Ftmp%2Fproject");
+      const cookie = response.headers.get("set-cookie");
+      assert.match(cookie, new RegExp(`^${SESSION_COOKIE}=${AUTH.session}; Path=/; HttpOnly; SameSite=Strict`));
+      assert.equal(seen.length, 0);
+
+      const page = await get(proxyPort, { accept: "text/html", cookie: `${SESSION_COOKIE}=${AUTH.session}` });
+      assert.equal(page.status, 200);
+      assert.match(page.body, /tode-injected/);
+      // code-server gets its own credential, and never the window's
+      assert.equal(seen[0].headers.cookie, `${CODE_SERVER_COOKIE}=${AUTH.codeServer}`);
+    },
+    AUTH,
+  );
+});
+
+test("a stale or forged ticket is refused, but an entered window may reload the entry url", async () => {
+  await withPair(
+    htmlUpstream,
+    async ({ proxyPort }) => {
+      const base = `http://127.0.0.1:${proxyPort}${ENTER_ROUTE}?next=%2F&ticket=`;
+      const old = mintTicket(AUTH.session, Date.now() - 3 * 60_000);
+      assert.equal((await fetch(`${base}${old}`, { redirect: "manual" })).status, 403);
+      const forged = mintTicket("not-the-secret");
+      assert.equal((await fetch(`${base}${forged}`, { redirect: "manual" })).status, 403);
+      const again = await fetch(`${base}${old}`, {
+        redirect: "manual",
+        headers: { cookie: `${SESSION_COOKIE}=${AUTH.session}` },
+      });
+      assert.equal(again.status, 303);
+    },
+    AUTH,
+  );
+});
+
+test("a ticket is good exactly once, so a copy taken from a process list is worthless", async () => {
+  await withPair(
+    htmlUpstream,
+    async ({ proxyPort }) => {
+      const url = `http://127.0.0.1:${proxyPort}${ENTER_ROUTE}?next=%2F&ticket=${mintTicket(AUTH.session)}`;
+      assert.equal((await fetch(url, { redirect: "manual" })).status, 303);
+      assert.equal((await fetch(url, { redirect: "manual" })).status, 403);
+    },
+    AUTH,
+  );
+});
+
+test("the entry url only ever sends the window somewhere on this origin", async () => {
+  await withPair(
+    htmlUpstream,
+    async ({ proxyPort }) => {
+      const ticket = mintTicket(AUTH.session);
+      const url = `http://127.0.0.1:${proxyPort}${ENTER_ROUTE}?ticket=${ticket}&next=${encodeURIComponent("//evil.example/x")}`;
+      const response = await fetch(url, { redirect: "manual" });
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.get("location"), "/");
+    },
+    AUTH,
+  );
+});
+
+test("tickets expire and cannot be post-dated", () => {
+  const now = Date.now();
+  assert.ok(ticketValid("k", mintTicket("k", now), now));
+  assert.ok(!ticketValid("k", mintTicket("k", now - 3 * 60_000), now));
+  assert.ok(!ticketValid("k", mintTicket("k", now + 60 * 60_000), now));
+  assert.ok(!ticketValid("k", "garbage", now));
+  assert.ok(!ticketValid("k", mintTicket("other", now), now));
 });
 
 test("the empty editor stays empty: the watermark is always hidden", () => {

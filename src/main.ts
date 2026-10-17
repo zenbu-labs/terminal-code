@@ -11,6 +11,7 @@ import {
   ensureServer,
   origin,
   stopServer,
+  windowUrl,
 } from "./codeserver/server";
 import { CODE_SERVER_VERSION, ensureCodeServer, narrateFetch } from "./codeserver/vendored";
 import { installBridge, requestStartupOpen } from "./bridge";
@@ -69,7 +70,7 @@ async function bootEditorUrl(): Promise<string> {
   installBridge(todeCommand());
   installKeybindings();
   const server = await ensureServer();
-  return workbenchUrl(origin(server), resolveTarget(undefined, process.cwd()));
+  return windowUrl(server, workbenchUrl(origin(server), resolveTarget(undefined, process.cwd())));
 }
 
 function fail(message: string): never {
@@ -282,7 +283,7 @@ async function openCommand(args: string[]): Promise<number> {
         ...(review ? { view: "scm" } : {}),
       });
     }
-    return workbenchUrl(origin(server), target);
+    return windowUrl(server, workbenchUrl(origin(server), target));
   })());
 
   void ensureServer().catch(() => {});
@@ -611,7 +612,7 @@ async function serveCommand(args: string[]): Promise<number> {
   installKeybindings();
   const server = await ensureServer();
   const target = resolveTarget(requested, process.cwd());
-  process.stdout.write(`READY ${workbenchUrl(origin(server), target)}\n`);
+  process.stdout.write(`READY ${windowUrl(server, workbenchUrl(origin(server), target))}\n`);
   return 0;
 }
 
