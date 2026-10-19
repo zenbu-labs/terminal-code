@@ -165,7 +165,7 @@ ${STARTUP_OPEN_FILE} is a one-shot marker with the parts of an open the url cann
 - ${PORT_FILE} — the injector's sticky port, reused while free so saved
   workspaces and the chromium cache stay valid.
 - ${path.join(LOGS_DIR, "code-server.log")} — combined code-server + injector log, append-only.
-- code-server runs with --auth none on 127.0.0.1, user-data ${path.join(VSCODE_DIR, "user-data")},
+- code-server runs with --auth password on 127.0.0.1 (the injector holds the credential), user-data ${path.join(VSCODE_DIR, "user-data")},
   extensions ${EXTENSIONS_DIR}.
 
 ## Homes on disk
