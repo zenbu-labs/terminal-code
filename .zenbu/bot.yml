@@ -1,5 +1,5 @@
 # Zenbu bot (https://github.com/zenbu-labs/zenbu-bot). Read from the default branch only.
-# terminal-code has no web UI to demo, so bugs are reproduced with a failing test instead of a video.
+# terminal-code has no web UI to demo, so bugs are reproduced with a failing test (plus a terminal video).
 # The bot's sandbox can't download pixel's Electron typings (GitHub is off-limits there), so tsc reports
 # Electron-only type errors; it still emits dist/, which is all the node tests need.
 app:
@@ -8,5 +8,8 @@ app:
   test_one: npx tsc -p tsconfig.json > /dev/null; node scripts/write-cjs-boundary.js && node --test {file}
 reproduce: tests
 handlers: [issue.enhance, issue.act, pr.enhance]
-# Every reproduction and fix also gets a video: a real Ghostty terminal on the bot's virtual display.
+# Every reproduction and fix also gets a video: a real Ghostty terminal on the bot's virtual display, or on a
+# real Mac for Mac-specific issues.
 terminal: {}
+# Real Macs the bot may use when an issue is Mac-specific (Intel-only bugs run on the Intel Mac).
+desktop_runners: [macos-15-intel, macos-15]
