@@ -4,6 +4,9 @@
 # Electron-only type errors; it still emits dist/, which is all the node tests need.
 app:
   install: npm ci --ignore-scripts
+  # On a real Mac (open network), with lifecycle scripts: pixel's postinstall downloads its Electron, so Electron-only
+  # bugs can be shown for real.
+  install_macos: npm ci
   test: npx tsc -p tsconfig.json > /dev/null; node scripts/write-cjs-boundary.js && node --test "test/*.test.js"
   test_one: npx tsc -p tsconfig.json > /dev/null; node scripts/write-cjs-boundary.js && node --test {file}
 reproduce: tests
