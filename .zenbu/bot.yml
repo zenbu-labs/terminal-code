@@ -1,8 +1,10 @@
 # Zenbu bot (https://github.com/zenbu-labs/zenbu-bot). Read from the default branch only.
 # terminal-code has no web UI to demo, so bugs are reproduced with a failing test instead of a video.
+# The bot's sandbox can't download pixel's Electron typings (GitHub is off-limits there), so tsc reports
+# Electron-only type errors; it still emits dist/, which is all the node tests need.
 app:
   install: npm ci --ignore-scripts
-  test: npm test
-  test_one: npm run -s build && node --test {file}
+  test: npx tsc -p tsconfig.json > /dev/null; node scripts/write-cjs-boundary.js && node --test "test/*.test.js"
+  test_one: npx tsc -p tsconfig.json > /dev/null; node scripts/write-cjs-boundary.js && node --test {file}
 reproduce: tests
 handlers: [issue.enhance, issue.act, pr.enhance]
