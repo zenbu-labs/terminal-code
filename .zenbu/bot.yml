@@ -8,3 +8,5 @@ app:
   test_one: npx tsc -p tsconfig.json > /dev/null; node scripts/write-cjs-boundary.js && node --test {file}
 reproduce: tests
 handlers: [issue.enhance, issue.act, pr.enhance]
+# Every reproduction and fix also gets a video: a real Ghostty terminal on the bot's virtual display.
+terminal: {}
