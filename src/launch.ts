@@ -25,8 +25,11 @@ export interface LaunchOptions {
   partition?: string;
 }
 
+// A split pane starts with the terminal's environment, not ours, so the
+// shim's ELECTRON_RUN_AS_NODE=1 does not reach it. Without it Electron boots
+// Chromium instead of node; `env` sets it for any terminal's split.
 function windowCommand(url: string, options: LaunchOptions): string[] {
-  const command = [process.execPath, path.resolve(__dirname, "main.js"), "--window", url];
+  const command = ["/usr/bin/env", "ELECTRON_RUN_AS_NODE=1", process.execPath, path.resolve(__dirname, "main.js"), "--window", url];
   if (options.proxy) command.push(`--proxy=${options.proxy}`);
   if (options.partition) command.push(`--partition=${options.partition}`);
   return command;
