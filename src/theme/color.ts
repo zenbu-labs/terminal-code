@@ -55,9 +55,10 @@ export function withAlpha(color: Rgb, alpha: number): string {
 }
 
 export function parseHex(value: string): Rgb | null {
-  const match = /^#?([0-9a-f]{6})$/i.exec(value.trim());
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
   if (!match) return null;
-  const number = parseInt(match[1], 16);
+  const digits = match[1].length === 3 ? [...match[1]].map((digit) => digit + digit).join("") : match[1];
+  const number = parseInt(digits, 16);
   return [(number >> 16) & 255, (number >> 8) & 255, number & 255];
 }
 
