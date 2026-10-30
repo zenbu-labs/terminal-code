@@ -1,0 +1,8 @@
+# Zenbu bot (https://github.com/zenbu-labs/zenbu-bot). Read from the default branch only.
+# terminal-code has no web UI to demo, so bugs are reproduced with a failing test instead of a video.
+app:
+  install: npm ci --ignore-scripts
+  test: npm test
+  test_one: npm run -s build && node --test {file}
+reproduce: tests
+handlers: [issue.enhance, issue.act, pr.enhance]
