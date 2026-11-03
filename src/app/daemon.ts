@@ -11,8 +11,9 @@ import { ipcSocketDir, sendToExtension } from "../ipc";
 import { parseRawColors } from "../livesync";
 import { cachedPalette, currentTheme, installCss, installTheme, setLiveTheme, transparencyEnabled } from "../profile";
 import type { TerminalPalette } from "../terminal/osc";
+import { handleClipboardMessage } from "./clipboard";
 import { MESSAGE_CHANNEL } from "./messages";
-import type { ThemeMessage, TimingMessage } from "./messages";
+import type { ClipboardMessage, ThemeMessage, TimingMessage } from "./messages";
 import { browserProfileDir, buildStamp, daemonPidFile, daemonSocket, lines } from "./protocol";
 import type { OpenRequest, Reply, Request } from "./protocol";
 
@@ -41,8 +42,9 @@ function scheduleIdleExit() {
   }, IDLE_EXIT_MS);
 }
 
-ipcMain.on(MESSAGE_CHANNEL, (event, message: ThemeMessage | TimingMessage | null) => {
+ipcMain.on(MESSAGE_CHANNEL, (event, message: ClipboardMessage | ThemeMessage | TimingMessage | null) => {
   if (!message) return;
+  if (handleClipboardMessage(event, message, windows)) return;
   if (message.type === "timing" && message.page) {
     const timingFile = [...windows.values()].find((window) => window.view?.webContents.id === event.sender.id)
       ?.request.timingFile;
