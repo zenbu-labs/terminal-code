@@ -1,8 +1,56 @@
-import { ipcRenderer } from "electron";
-import type { ThemeMessage, TimingMessage } from "./messages";
+import { ipcRenderer, webFrame } from "electron";
+import type { ClipboardMessage, ThemeMessage, TimingMessage } from "./messages";
 
 const CHANNEL = "tode:message";
-const deliver = (message: ThemeMessage | TimingMessage) => ipcRenderer.send(CHANNEL, message);
+const deliver = (message: ClipboardMessage | ThemeMessage | TimingMessage) => ipcRenderer.send(CHANNEL, message);
+
+if (process.isMainFrame) {
+  for (const type of ["copy", "cut"]) {
+    document.addEventListener(type, (event) => {
+      const clipboardEvent = event as ClipboardEvent;
+      if (!clipboardEvent.isTrusted) return;
+      const text = clipboardEvent.clipboardData?.getData("text/plain");
+      if (text) deliver({ type: "tode-clipboard-event", text });
+    });
+  }
+  window.addEventListener("message", (event) => {
+    if (event.source !== window || event.data?.source !== "tode-clipboard-fix-v1") return;
+    if (typeof event.data.text !== "string" || !event.data.text) return;
+    deliver({ type: "tode-clipboard-api", text: event.data.text });
+  });
+  void webFrame.executeJavaScript(`(() => {
+    const clipboard = navigator.clipboard;
+    if (!clipboard) return;
+    for (const method of ["writeText", "write"]) {
+      const original = clipboard[method];
+      if (typeof original !== "function") continue;
+      try {
+        Object.defineProperty(clipboard, method, {
+          configurable: true,
+          writable: true,
+          value: async function(...args) {
+            const result = await Reflect.apply(original, this, args);
+            try {
+              let text;
+              if (method === "writeText") {
+                if (typeof args[0] === "string") text = args[0];
+              } else {
+                for (const item of args[0]) {
+                  if (item.types.includes("text/plain")) {
+                    text = await (await item.getType("text/plain")).text();
+                    break;
+                  }
+                }
+              }
+              if (text) window.postMessage({ source: "tode-clipboard-fix-v1", text }, "*");
+            } catch {}
+            return result;
+          },
+        });
+      } catch {}
+    }
+  })()`).catch(() => {});
+}
 
 pixel.onTheme((theme) => deliver({ type: "theme", colors: theme }));
 
