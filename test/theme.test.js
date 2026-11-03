@@ -180,6 +180,25 @@ test("jsonc reading survives comments and trailing commas", () => {
   });
 });
 
+test("jsonc reading leaves a comma inside a string alone", () => {
+  const { parseJsonc } = require("../dist/jsonc.js");
+  // a regex character class ending in a comma, the shape settings like
+  // todo-tree.regex.regex or cSpell.ignoreRegExpList carry — the trailing
+  // comma outside the string must still go, the one inside must not
+  const source = `{
+  "pattern": "([^,]+)",
+  "list": "[a, ]",
+  "glob": "**/*.{js,}",
+  "keys": ["ctrl+,", "x, ]",],
+}`;
+  assert.deepEqual(parseJsonc(source), {
+    pattern: "([^,]+)",
+    list: "[a, ]",
+    glob: "**/*.{js,}",
+    keys: ["ctrl+,", "x, ]"],
+  });
+});
+
 test("jsonc reading handles a keybindings array", () => {
   const { parseJsonc } = require("../dist/jsonc.js");
   const parsed = parseJsonc(`// mine\n[ { "key": "cmd+k", "command": "x" }, ]`);

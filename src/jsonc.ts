@@ -197,11 +197,20 @@ export function parseJsonc<T = unknown>(source: string): T | null {
       index = end;
       continue;
     }
+    // a trailing comma is one whose next real token closes the container;
+    // strings were copied whole above, so a comma inside one never gets here
+    if (ch === ",") {
+      const next = source[skipTrivia(source, index + 1)];
+      if (next === "}" || next === "]") {
+        index += 1;
+        continue;
+      }
+    }
     out += ch;
     index += 1;
   }
   try {
-    return JSON.parse(out.replace(/,(\s*[}\]])/g, "$1")) as T;
+    return JSON.parse(out) as T;
   } catch {
     return null;
   }
