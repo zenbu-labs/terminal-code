@@ -4,7 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { callerTty, canSplit, cannotOpenPanes, checkTerminal, detect, findOwner, unsupportedGraphicsMessage } from "@zenbu-labs/pixel/terminal";
+import { UNSUPPORTED_ENV, callerTty, canSplit, cannotOpenPanes, checkTerminal, detect, findOwner } from "@zenbu-labs/pixel/terminal";
 import type { Direction } from "@zenbu-labs/pixel/terminal";
 
 import { ask, connectDaemon, linesOf, sleep } from "./app/control";
@@ -54,6 +54,20 @@ function spawnDaemon(): void {
 // probe or split the terminal.
 function hosted(tty: string): boolean {
   return Boolean(process.env.PIXEL_EMBED) || findOwner(tty) !== null;
+}
+
+function unsupportedGraphicsMessage(color: boolean): string {
+  const sgr = (code: string, text: string) => (color ? `\x1b[${code}m${text}\x1b[0m` : text);
+  return [
+    "",
+    `  ${sgr("1", "Unsupported terminal: this terminal cannot display graphics")}`,
+    "",
+    `  ${sgr("2", "We recommend Ghostty:")}`,
+    `  ${sgr("4", "https://ghostty.org/download")}`,
+    "",
+    `  ${sgr("2", "Note: any terminal that supports the kitty graphics protocol is supported")}`,
+    "",
+  ].join("\n");
 }
 
 function windowTty(): string | null {
@@ -129,7 +143,8 @@ function attachWindow(url: string, options: LaunchOptions): { exited: Promise<nu
         cmd: "open",
         tty,
         url,
-        env: process.env,
+        // The graphics check already ran above; pixel's root would exit the whole daemon on this flag.
+        env: Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== UNSUPPORTED_ENV)),
         proxy: options.proxy,
         partition: options.partition,
         timingFile: `${CSS_FILE}.timing.json`,
