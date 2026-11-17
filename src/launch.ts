@@ -4,8 +4,22 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { callerTty, canSplit, cannotOpenPanes, checkTerminal, detect, findOwner, unsupportedGraphicsMessage } from "@zenbu-labs/pixel/terminal";
+import { callerTty, canSplit, cannotOpenPanes, checkTerminal, detect, findOwner } from "@zenbu-labs/pixel/terminal";
 import type { Direction } from "@zenbu-labs/pixel/terminal";
+
+function unsupportedGraphicsMessage(color = false): string {
+  const sgr = (code: string, text: string) => (color ? `\x1b[${code}m${text}\x1b[0m` : text);
+  return [
+    "",
+    `  ${sgr("1", "Unsupported terminal: this terminal cannot display graphics")}`,
+    "",
+    `  ${sgr("2", "We recommend Ghostty:")}`,
+    `  ${sgr("4", "https://ghostty.org/download")}`,
+    "",
+    `  ${sgr("2", "Note: any terminal that supports the kitty graphics protocol is supported")}`,
+    "",
+  ].join("\n");
+}
 
 import { ask, connectDaemon, linesOf, sleep } from "./app/control";
 import { DAEMON_DIR, buildStamp, daemonSocket } from "./app/protocol";
