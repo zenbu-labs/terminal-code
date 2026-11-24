@@ -65,7 +65,17 @@ export default function Home() {
               How does it work?
             </h2>
             <p className="mt-3 max-w-[560px] text-[13px] leading-[1.75] text-muted">
-              terminal-code combines{" "}
+              terminal-code is built on top of{" "}
+              <a
+                href="https://pixelgui.com"
+                target="_blank"
+                rel="noreferrer"
+                className="text-text2 underline decoration-border underline-offset-[3px] transition-colors hover:text-ok hover:decoration-ok/50"
+              >
+                pixelgui.com
+              </a>
+              , a library for building graphical applications in the terminal,
+              and{" "}
               <a
                 href="https://github.com/coder/code-server"
                 target="_blank"
@@ -73,18 +83,8 @@ export default function Home() {
                 className="text-text2 underline decoration-border underline-offset-[3px] transition-colors hover:text-ok hover:decoration-ok/50"
               >
                 code-server
-              </a>{" "}
-              (VS Code in the browser) and{" "}
-              <a
-                href="https://github.com/zenbu-labs/terminal-browser"
-                target="_blank"
-                rel="noreferrer"
-                className="text-text2 underline decoration-border underline-offset-[3px] transition-colors hover:text-ok hover:decoration-ok/50"
-              >
-                terminal-browser
-              </a>{" "}
-              (a browser in the terminal) to bring VS Code to the terminal. You
-              should look into these projects for more details!
+              </a>
+              . You should look into these projects for more details!
             </p>
             <p className="mt-3 max-w-[560px] text-[13px] leading-[1.75] text-muted">
               <a

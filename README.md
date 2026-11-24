@@ -72,7 +72,7 @@ Commands, each as the first argument:
 
 ### How does it work?
 
-terminal-code combines [terminal-browser](https://github.com/zenbu-labs/terminal-browser) (a browser in the terminal) and [code-server](https://github.com/coder/code-server) (VS Code in the browser) to bring VS Code to the terminal. You should look into these projects for more details!
+terminal-code is built on top of [pixelgui.com](https://pixelgui.com), a library for building graphical applications in the terminal, and [code-server](https://github.com/coder/code-server). You should look into these projects for more details!
 
 
 
