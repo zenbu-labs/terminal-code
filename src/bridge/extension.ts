@@ -43,6 +43,8 @@ interface VscodeApi {
   };
   window: {
     showInformationMessage(message: string, ...items: string[]): PromiseLike<string | undefined>;
+    showWarningMessage(message: string, ...items: string[]): PromiseLike<string | undefined>;
+    createTerminal(options: { name: string; shellPath: string; shellArgs: string[] }): { show(): void };
     showErrorMessage(
       message: string,
       options: { modal: boolean },
@@ -93,6 +95,9 @@ export function bridgeMain(ctx: BridgeCtx): void {
   const STARTUP_OPEN_FILE = ctx.startupOpenFile;
   const DAEMON_SOCKET = ctx.daemonSocket;
   const TRANSPARENCY_SETTING = ctx.transparencySetting;
+  const LOCAL_RENDERING_SETTINGS_FILE = ctx.localRenderingSettingsFile;
+  const LOCAL_RENDERING_ATTEMPT_FILE = ctx.localRenderingAttemptFile;
+  const TODE = ctx.tode;
 
   const VIEW_COMMANDS: Record<string, string> = { scm: "workbench.view.scm" };
 
@@ -152,6 +157,46 @@ export function bridgeMain(ctx: BridgeCtx): void {
       )
       .then((picked) => {
         if (picked) tellWindowProcess(on);
+      });
+  }
+
+  function runCli(title: string, args: string[]): void {
+    const closing = "press enter to close";
+    vscode.window
+      .createTerminal({ name: title, shellPath: "/bin/sh", shellArgs: ["-c", '"$@"; echo; printf %s "$0"; read _', closing, ...TODE, ...args] })
+      .show();
+  }
+
+  function localRenderingOn(): boolean {
+    try {
+      return JSON.parse(fs.readFileSync(LOCAL_RENDERING_SETTINGS_FILE, "utf8")).enabled === true;
+    } catch {
+      return false;
+    }
+  }
+
+  function syncLocalRenderingContext(): void {
+    void vscode.commands.executeCommand("setContext", "tode.localRendering", localRenderingOn());
+  }
+
+  function toastLocalRenderingFallback(): void {
+    let attempt: { at?: number; ok?: boolean; toasted?: number; summary?: string; failures?: { reason?: string }[] };
+    try {
+      attempt = JSON.parse(fs.readFileSync(LOCAL_RENDERING_ATTEMPT_FILE, "utf8"));
+    } catch {
+      return;
+    }
+    if (!attempt || attempt.ok || attempt.toasted || Date.now() - (attempt.at || 0) > 120000) return;
+    attempt.toasted = Date.now();
+    try {
+      fs.writeFileSync(LOCAL_RENDERING_ATTEMPT_FILE, JSON.stringify(attempt, null, 2) + NL, { mode: 0o600 });
+    } catch {}
+    const lost = attempt.failures && attempt.failures[0] && attempt.failures[0].reason === "lost";
+    const lead = lost ? "Local rendering stopped" : "Local rendering unavailable";
+    void vscode.window
+      .showWarningMessage(`${lead}, rendering on the server: ${attempt.summary}`, "Run Doctor")
+      .then((picked) => {
+        if (picked) runCli("Local Rendering Doctor", ["--local-rendering-doctor"]);
       });
   }
 
@@ -329,6 +374,28 @@ export function bridgeMain(ctx: BridgeCtx): void {
       }),
     );
     syncTransparencyContext();
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand("tode.enableLocalRendering", () =>
+        runCli("Local Rendering", ["--enable-local-rendering-over-ssh"]),
+      ),
+      vscode.commands.registerCommand("tode.disableLocalRendering", () =>
+        runCli("Local Rendering", ["--disable-local-rendering-over-ssh"]),
+      ),
+      vscode.commands.registerCommand("tode.setupSsh", () => runCli("SSH for Local Rendering", ["--setup-ssh"])),
+      vscode.commands.registerCommand("tode.localRenderingDoctor", () =>
+        runCli("Local Rendering Doctor", ["--local-rendering-doctor"]),
+      ),
+    );
+    syncLocalRenderingContext();
+    void vscode.commands.executeCommand(
+      "setContext",
+      "tode.overSsh",
+      Boolean(process.env.SSH_CONNECTION || process.env.SSH_CLIENT),
+    );
+    fs.watchFile(LOCAL_RENDERING_SETTINGS_FILE, { interval: 2000, persistent: false }, syncLocalRenderingContext);
+    context.subscriptions.push({ dispose: () => fs.unwatchFile(LOCAL_RENDERING_SETTINGS_FILE) });
+    toastLocalRenderingFallback();
 
     let confirmShowing = false;
     context.subscriptions.push(

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -38,7 +37,11 @@ import {
 import { shutdownDaemons } from "./app/control";
 import type { Windows } from "./app/control";
 import { Pane, launchBrowser, registerSelf } from "./launch";
+import { disableCommand, doctorCommand, enableCommand } from "./pair/commands";
+import { runListener } from "./pair/listener";
+import { runTunnel, setupSshCommand } from "./pair/tunnel";
 import { INSTALL_ROOT } from "./runtime/paths";
+import { COMMAND, installedShim } from "./runtime/shim";
 import { skillCommand } from "./skill";
 import { sshForward, sshOpen } from "./ssh";
 import { resolveTarget, workbenchUrl } from "./target";
@@ -48,15 +51,9 @@ import { upgrade } from "./upgrade";
 import { hex } from "./theme/color";
 import { semanticColors } from "./theme/generate";
 
-// hm? does it ever get installed at home dir local?
-function shimPath(): string {
-  const binHome = process.env.XDG_BIN_HOME ?? path.join(os.homedir(), ".local", "bin");
-  return path.join(binHome, "tode");
-}
-
 function todeCommand(): string[] {
-  const shim = shimPath();
-  if (fs.existsSync(shim)) return [shim];
+  const shim = installedShim();
+  if (shim) return [shim];
   return [process.execPath, process.argv[1]];
 }
 
@@ -74,7 +71,7 @@ async function bootEditorUrl(): Promise<string> {
 }
 
 function fail(message: string): never {
-  process.stderr.write(`tode: ${message}\n`);
+  process.stderr.write(`${COMMAND}: ${message}\n`);
   process.exit(1);
 }
 
@@ -109,12 +106,14 @@ function takeBool(args: string[], name: string): boolean {
   return true;
 }
 
-const HELP = `Usage: tode [path...] [options]
-       tode --<command>
+const HELP = `Usage: ${COMMAND} [path...] [options]
+       ${COMMAND} --<command>
 
-  tode                  Open the folder in the current working directory
-  tode <folder>         Open the specified folder
-  tode <file>           Open the specified file
+  ${COMMAND.padEnd(24)}Open the folder in the current working directory
+  ${`${COMMAND} <folder>`.padEnd(24)}Open the specified folder
+  ${`${COMMAND} <file>`.padEnd(24)}Open the specified file
+
+  ${COMMAND === "tode" ? "terminal-code" : "tode"} is the same command.
 
 
 Options:
@@ -131,21 +130,33 @@ Options:
   --size <fraction>     The % a new split will take up (0.2 to 0.95)
   --timing              Report how long each stage of this open took
   --review              Open on the source control panel
-  --ssh <user@host>     Run terminal-code on an ssh server
+  --ssh <user@host>     Run ${COMMAND} on an ssh server
 
 Commands, each as the first argument:
-  --shortcut-setup      Resolve shortcut conflicts between terminal-code and the current terminal
-  --timing              Profile terminal-code launch
+  --shortcut-setup      Resolve shortcut conflicts between ${COMMAND} and the current terminal
+  --timing              Profile ${COMMAND} launch
   --import [editor]     Bring settings, keybindings, snippets and extensions
                         over from vscode compatible editors
   --theme [file]        Set editor theme
   --enable-transparency Make the editor transparent
   --disable-transparency Make the editor opaque again
+  --enable-local-rendering-over-ssh [--allow-peer <device>]
+                        Renders ${COMMAND} on your own machine when you run
+                        it over ssh, must be enabled on both machines
+  --disable-local-rendering-over-ssh
+                        Turn local rendering over ssh off on this machine
+  --setup-ssh [user@host]
+                        Allow the local CLI to communicate to your remote CLI
+                        over ssh, used with local rendering to improve UI
+                        performance over SSH
+  --local-rendering-doctor
+                        Show any issues preventing local rendering from
+                        working correctly
   --serve [path]        Start code server and print its url
-  --skill               An agent skill to assist with modifying terminal-code
-  --upgrade [--check]   Upgrade terminal-code to the latest version
-  --shutdown            Stop all terminal-code activities
-  --uninstall [--yes]   Remove all terminal-code data from this machine
+  --skill               An agent skill to assist with modifying ${COMMAND}
+  --upgrade [--check]   Upgrade ${COMMAND} to the latest version
+  --shutdown            Stop all ${COMMAND} activities
+  --uninstall [--yes]   Remove all ${COMMAND} data from this machine
 `;
 
 
@@ -182,7 +193,7 @@ function dropIgnored(args: string[]): void {
   for (const flag of IGNORED) takeBool(args, flag);
   for (const [flag, why] of UNSUPPORTED) {
     const had = takeBool(args, flag) || takeAll(args, flag).length > 0;
-    if (had) process.stderr.write(`tode: ignoring ${flag}, ${why}\n`);
+    if (had) process.stderr.write(`${COMMAND}: ignoring ${flag}, ${why}\n`);
   }
 }
 
@@ -246,7 +257,7 @@ async function openCommand(args: string[]): Promise<number> {
         ...(review ? { view: "scm" } : {}),
       },
       wait ? 0 : 4000,
-    ).catch((error) => fail(`could not reach the tode window: ${error.message}`));
+    ).catch((error) => fail(`could not reach the ${COMMAND} window: ${error.message}`));
     return 0;
   }
 
@@ -296,7 +307,7 @@ async function openCommand(args: string[]): Promise<number> {
   if (timing) {
     for (const [label, ms] of stages) process.stderr.write(`  ${label.padEnd(12)} ${ms}ms\n`);
   }
-  return launchBrowser(url, palette, { split, size, stages }).catch((error: Error) =>
+  return launchBrowser(url, palette, { split, size, stages, offload: true }).catch((error: Error) =>
     fail(error.message),
   );
 }
@@ -365,7 +376,7 @@ function manageExtensions(install: string[], remove: string[]): number {
     if (code !== 0) return code;
   }
   registerThemeExtension();
-  if (install.length > 0) process.stdout.write("open tode again to pick it up\n");
+  if (install.length > 0) process.stdout.write(`open ${COMMAND} again to pick it up\n`);
   return 0;
 }
 
@@ -378,7 +389,7 @@ async function themeCommand(file?: string): Promise<number> {
   if (file) {
     const error = setThemeFile(file);
     if (error) {
-      process.stderr.write(`tode: ${error}\n`);
+      process.stderr.write(`${COMMAND}: ${error}\n`);
       return 1;
     }
     installBridge(todeCommand());
@@ -427,7 +438,7 @@ function timingCommand(): number {
   try {
     page = JSON.parse(fs.readFileSync(`${CSS_FILE}.timing.json`, "utf8")) as PageTiming;
   } catch {
-    process.stdout.write("no page timing recorded yet, open tode once\n");
+    process.stdout.write(`no page timing recorded yet, open ${COMMAND} once\n`);
     return 0;
   }
   let launch: { spawnedAt: number; stages: [string, number][] } | null = null;
@@ -442,7 +453,7 @@ function timingCommand(): number {
   const rows: [string, number][] = [
     ...(launch
       ? ([
-        ...launch.stages.map(([label, ms]) => [`tode: ${label}`, ms - launch!.stages[launch!.stages.length - 1][1]] as [string, number]),
+        ...launch.stages.map(([label, ms]) => [`${COMMAND}: ${label}`, ms - launch!.stages[launch!.stages.length - 1][1]] as [string, number]),
       ] as [string, number][])
       : []),
     ...(beforeNavigation !== null && beforeNavigation >= 0
@@ -486,7 +497,7 @@ async function shutdownCommand(): Promise<number> {
   const notes: string[] = [];
   if (stopped.windows > 0) notes.push(`closed ${stopped.windows} window${stopped.windows === 1 ? "" : "s"}`);
   if (stopped.killed > 0) notes.push(`killed ${stopped.killed} that did not answer`);
-  process.stdout.write(`tode stopped${notes.length > 0 ? `, ${notes.join(", ")}` : ""}\n`);
+  process.stdout.write(`${COMMAND} stopped${notes.length > 0 ? `, ${notes.join(", ")}` : ""}\n`);
   return 0;
 }
 
@@ -494,7 +505,7 @@ function windowCommand(args: string[]): Promise<number> {
   const flag = (name: string) => args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1);
   const url = args.find((arg) => !arg.startsWith("--"));
   if (!url) fail("--window needs a url");
-  const pane = new Pane({ proxy: flag("--proxy"), partition: flag("--partition") });
+  const pane = new Pane({ proxy: flag("--proxy"), partition: flag("--partition"), offload: args.includes("--offload") });
   pane.open(url);
   return pane.exited();
 }
@@ -511,7 +522,7 @@ async function upgradeCommand(args: string[]): Promise<number> {
     onStage: (stage, fraction) => {
       if (stage !== "downloading") return;
       if (!announced) {
-        process.stderr.write("tode: downloading\n");
+        process.stderr.write(`${COMMAND}: downloading\n`);
         announced = true;
       }
       const percent = Math.round(fraction * 100);
@@ -526,16 +537,16 @@ async function upgradeCommand(args: string[]): Promise<number> {
       fail(`${outcome.root} is a working tree, not an install — use git pull`);
     // eslint-disable-next-line no-fallthrough
     case "current":
-      process.stdout.write(`tode ${outcome.version} is the newest on ${outcome.channel}\n`);
+      process.stdout.write(`${COMMAND} ${outcome.version} is the newest on ${outcome.channel}\n`);
       return 0;
     case "available":
-      process.stdout.write(`tode ${outcome.build.version} is available (you have ${outcome.from})\n`);
+      process.stdout.write(`${COMMAND} ${outcome.build.version} is available (you have ${outcome.from})\n`);
       return 0;
     case "cancelled":
       process.stdout.write("cancelled\n");
       return 0;
     case "upgraded": {
-      process.stdout.write(`tode ${outcome.from} -> ${outcome.build.version}\n`);
+      process.stdout.write(`${COMMAND} ${outcome.from} -> ${outcome.build.version}\n`);
       return 0;
     }
   }
@@ -545,8 +556,8 @@ async function confirmUpgrade(build: { version: string }, windows: Windows): Pro
   if (!process.stdin.isTTY || !process.stdout.isTTY) return true;
   const open =
     windows.count > 0
-      ? `${windows.count} open tode window${windows.count === 1 ? "" : "s"}`
-      : "any open tode windows";
+      ? `${windows.count} open ${COMMAND} window${windows.count === 1 ? "" : "s"}`
+      : `any open ${COMMAND} windows`;
   process.stdout.write(`upgrading to ${build.version} closes ${open}\n`);
   const ask = readline.createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise<string>((resolve) => {
@@ -652,8 +663,18 @@ async function main(): Promise<number> {
   if (args[0] === "--shutdown") return shutdownCommand();
   if (args[0] === "--window") return windowCommand(args.slice(1));
   if (args[0] === "--uninstall") return uninstallCommand(args.slice(1));
+  if (args[0] === "--enable-local-rendering-over-ssh") return enableCommand(args.slice(1));
+  if (args[0] === "--disable-local-rendering-over-ssh") return disableCommand();
+  if (args[0] === "--setup-ssh") return setupSshCommand(args.slice(1));
+  if (args[0] === "--local-rendering-doctor") return doctorCommand();
+  if (args[0] === "--local-rendering-listener") return runListener();
+  if (args[0] === "--local-rendering-tunnel") return runTunnel();
   return openCommand(args);
 }
+
+process.stdout.on("error", (error: NodeJS.ErrnoException) => {
+  if (error.code === "EPIPE") process.exit(0);
+});
 
 void main()
   .then((code) => {

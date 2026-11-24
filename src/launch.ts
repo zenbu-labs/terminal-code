@@ -25,7 +25,9 @@ import { ask, connectDaemon, linesOf, sleep } from "./app/control";
 import { DAEMON_DIR, buildStamp, daemonSocket } from "./app/protocol";
 import type { OpenRequest, Reply, Request } from "./app/protocol";
 import { CSS_FILE } from "./codeserver/server";
+import { renderLocally } from "./pair/remote";
 import { bootstrapEntry, daemonEntry, electronBinary } from "./runtime/launcher";
+import { COMMAND, installedShim } from "./runtime/shim";
 import type { TerminalPalette } from "./terminal/osc";
 
 const APP_NAME = "terminal-code";
@@ -37,12 +39,14 @@ export interface LaunchOptions {
   stages?: [string, number][];
   proxy?: string;
   partition?: string;
+  offload?: boolean;
 }
 
 function windowCommand(url: string, options: LaunchOptions): string[] {
   const command = [process.execPath, path.resolve(__dirname, "main.js"), "--window", url];
   if (options.proxy) command.push(`--proxy=${options.proxy}`);
   if (options.partition) command.push(`--partition=${options.partition}`);
+  if (options.offload) command.push("--offload");
   return command;
 }
 
@@ -54,7 +58,11 @@ function spawnDaemon(): void {
   );
   fs.mkdirSync(DAEMON_DIR, { recursive: true });
   const log = fs.openSync(path.join(DAEMON_DIR, "daemon.log"), "a");
-  const child = spawn(electronBinary(), [bootstrapEntry(), daemonEntry()], {
+  const headless =
+    process.platform === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY
+      ? ["--ozone-platform=headless", "--screen-info={8192x8192}"]
+      : [];
+  const child = spawn(electronBinary(), [bootstrapEntry(), daemonEntry(), ...headless], {
     detached: true,
     stdio: ["ignore", "ignore", log],
     env,
@@ -89,7 +97,7 @@ async function daemonConnection(): Promise<net.Socket> {
       await sleep(100);
     }
   }
-  throw new Error("the tode window process did not start");
+  throw new Error(`the ${COMMAND} window process did not start`);
 }
 
 function stale(reply: Reply): boolean {
@@ -108,7 +116,7 @@ async function daemonGone(within: number): Promise<void> {
   }
 }
 
-async function openSession(request: OpenRequest): Promise<{ socket: net.Socket; reply: Reply }> {
+export async function openSession(request: OpenRequest): Promise<{ socket: net.Socket; reply: Reply }> {
   const build = buildStamp(daemonEntry());
   let socket = await daemonConnection();
   let reply = await ask(socket, { ...request, build }, OPEN_TIMEOUT_MS);
@@ -127,7 +135,7 @@ function attachWindow(url: string, options: LaunchOptions): { exited: Promise<nu
   const exited = (async () => {
     const tty = windowTty();
     if (!tty) {
-      process.stderr.write("tode needs a terminal to draw on\n");
+      process.stderr.write(`${COMMAND} needs a terminal to draw on\n`);
       return 1;
     }
     if (!hosted(tty)) {
@@ -149,7 +157,7 @@ function attachWindow(url: string, options: LaunchOptions): { exited: Promise<nu
         timingFile: `${CSS_FILE}.timing.json`,
       });
     } catch (error) {
-      process.stderr.write(`could not open the tode window: ${(error as Error).message}\n`);
+      process.stderr.write(`could not open the ${COMMAND} window: ${(error as Error).message}\n`);
       return 1;
     }
     const { socket, reply } = session;
@@ -159,7 +167,7 @@ function attachWindow(url: string, options: LaunchOptions): { exited: Promise<nu
       } catch {}
     };
     if ("ok" in reply && !reply.ok) {
-      process.stderr.write(`could not open the tode window: ${reply.error}\n`);
+      process.stderr.write(`could not open the ${COMMAND} window: ${reply.error}\n`);
       socket.destroy();
       return 1;
     }
@@ -195,8 +203,8 @@ function attachWindow(url: string, options: LaunchOptions): { exited: Promise<nu
 }
 
 export function registerSelf(): void {
-  const bin = path.join(process.env.XDG_BIN_HOME ?? path.join(os.homedir(), ".local", "bin"), "tode");
-  if (!fs.existsSync(bin)) return;
+  const bin = installedShim();
+  if (!bin) return;
   const override = process.env.TERMINAL_BROWSER_INTEROP_DIR;
   const root =
     override && path.isAbsolute(override)
@@ -245,8 +253,10 @@ export class Pane {
     return this.exit ?? new Promise<number>(() => {});
   }
 
-  private openHere(url: string): Promise<number> {
-    const window = attachWindow(url, this.options);
+  private async openHere(url: string): Promise<number> {
+    const local = this.options.offload && !this.options.proxy ? await renderLocally(url) : null;
+    if (typeof local === "number") return local;
+    const window = attachWindow(local ?? url, this.options);
     this.closeWindow = () => window.close();
     return window.exited;
   }

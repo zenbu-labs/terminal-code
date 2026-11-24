@@ -16,12 +16,14 @@ curl -fsSL https://tode.sh/install | bash
 
 ### Usage
 ```
-Usage: tode [path...] [options]
-       tode --<command>
+Usage: terminal-code [path...] [options]
+       terminal-code --<command>
 
-  tode                  Open the folder in the current working directory
-  tode <folder>         Open the specified folder
-  tode <file>           Open the specified file
+  terminal-code           Open the folder in the current working directory
+  terminal-code <folder>  Open the specified folder
+  terminal-code <file>    Open the specified file
+
+  tode is the same command.
 
 
 Options:
@@ -48,6 +50,18 @@ Commands, each as the first argument:
   --theme [file]        Set editor theme
   --enable-transparency Make the editor transparent
   --disable-transparency Make the editor opaque again
+  --enable-local-rendering-over-ssh [--allow-peer <device>]
+                        Renders terminal-code on your own machine when you run
+                        it over ssh, must be enabled on both machines
+  --disable-local-rendering-over-ssh
+                        Turn local rendering over ssh off on this machine
+  --setup-ssh [user@host]
+                        Allow the local CLI to communicate to your remote CLI
+                        over ssh, used with local rendering to improve UI
+                        performance over SSH
+  --local-rendering-doctor
+                        Show any issues preventing local rendering from
+                        working correctly
   --serve [path]        Start code server and print its url
   --skill               An agent skill to assist with modifying terminal-code
   --upgrade [--check]   Upgrade terminal-code to the latest version
@@ -58,29 +72,40 @@ Commands, each as the first argument:
 
 ### How does it work?
 
-terminal-code combines [terminal-browser](https://github.com/zenbu-labs/terminal-browser) (a browser in the terminal) and [code-server](https://github.com/coder/code-server) (VS Code in the browser) to bring VS Code to the terminal. You should look into these projects for more details!
+terminal-code is built on top of [pixelgui](https://pixelgui.com), a library for building graphical applications in the terminal, and [code-server](https://github.com/coder/code-server). You should look into these projects for more details!
 
 
 
 ### Shortcuts
 
 Your terminal and terminal-code will likely conflict on important shortcuts, meaning sometimes terminal-code will never even receive your key press. To resolve
-shortcut conflicts you can run `tode --shortcut-setup`, and you will be placed into an interactive wizard that lets you change terminal or terminal-code shortcuts
+shortcut conflicts you can run `terminal-code --shortcut-setup`, and you will be placed into an interactive wizard that lets you change terminal or terminal-code shortcuts
 so they no longer conflict
 
 
 
 ### SSH
 
-The recommended way to use terminal-code over ssh is running `tode --ssh <ssh arguments>` on your local machine.
+The recommended way to use terminal-code over ssh is running `terminal-code --ssh <ssh arguments>` on your local machine.
 
-The alternative is running `tode` directly on the machine you are shh'd into. This will work, but
+The alternative is running `terminal-code` directly on the machine you are shh'd into. This will work, but
 requires:
 - every single frame drawn by vscode to be sent over the network
 - all user input to be sent over the network before vscode can react
 - misses out some [extra optimizations](https://sw.kovidgoyal.net/kitty/graphics-protocol/#local-client)
 
-`tode --ssh` improves on this by running only the backend of vscode on the remote machine. The frontend is still running locally on your device, so vscode is able to respond to interactions ~instantly. Any network requests will get proxied over the ssh connection.
+`terminal-code --ssh` improves on this by running only the backend of vscode on the remote machine. The frontend is still running locally on your device, so vscode is able to respond to interactions ~instantly. Any network requests will get proxied over the ssh connection.
+
+### Local rendering over ssh
+terminal-code includes an experimental option which works in some terminal environments that significantly improves UI performance when inside an ssh shell. You can enable this by running `terminal-code --enable-local-rendering-over-ssh` on your remote and local machine
+
+When this mode is enabled, the remote terminal-code will ask your local terminal-code to take over rendering vscode. Normally, image data about vscode needs to transfer over the network when rendering via SSH, so this mode eliminates this large bottleneck to UI performance.
+
+The terminal-code's need to synchronize with each other for this to work, so when enabled they will try to contact each other over a network connection.
+
+First it will try to reach the local machine directly from the remote machine, which will work if the 2 machines are connected over tailscale. If you do not have tailscale setup you can run `terminal-code --setup-ssh <user@server>` on your local terminal-code, which allows terminal-code to open an ssh connection to your server to communicate with your remote terminal-code.
+
+For any terminal multiplexers that wants to support this mode, you need to ensure that the programs kitty graphics commands are passed through to the local terminal un-altered. You can reference [this PR](https://github.com/zenbu-labs/terminal-browser/pull/309) for technical details
 
 ### Windows
 

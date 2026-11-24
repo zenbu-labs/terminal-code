@@ -12,13 +12,13 @@ case "$(uname -s)-$(uname -m)" in
   Linux-x86_64|Linux-amd64) TARGET=linux-x64 ;;
   Linux-aarch64|Linux-arm64) TARGET=linux-arm64 ;;
   *)
-    echo "tode does not support $(uname -s) $(uname -m) yet" >&2
+    echo "terminal-code does not support $(uname -s) $(uname -m) yet" >&2
     exit 1
     ;;
 esac
 
 ROW="$(printf '%s\n' "$PLATFORMS" | awk -v t="$TARGET" '$1 == t')"
-[ -n "$ROW" ] || { echo "tode $VERSION has no build for $TARGET" >&2; exit 1; }
+[ -n "$ROW" ] || { echo "terminal-code $VERSION has no build for $TARGET" >&2; exit 1; }
 URL="$(printf '%s\n' "$ROW" | awk '{print $2}')"
 SHA256="$(printf '%s\n' "$ROW" | awk '{print $3}')"
 
@@ -33,7 +33,7 @@ APP="${TODE_INSTALL_ROOT:-$LIB_HOME/tode}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "tode $VERSION ($CHANNEL) for $TARGET"
+echo "terminal-code $VERSION ($CHANNEL) for $TARGET"
 
 TARBALL="$TMP/tode.tar.gz"
 curl -fL --retry 3 --retry-delay 2 --progress-bar "$URL" -o "$TARBALL"
@@ -80,8 +80,15 @@ mv "$APP.new" "$APP"
 rm -rf "$APP.old"
 
 mkdir -p "$BIN_HOME"
-cp "$APP/bin/tode" "$BIN_HOME/tode"
-chmod +x "$BIN_HOME/tode"
+for NAME in terminal-code tode; do
+  cp "$APP/bin/tode" "$BIN_HOME/$NAME"
+  chmod +x "$BIN_HOME/$NAME"
+done
+if [ "$(uname -s)" = Darwin ]; then
+  launchctl kickstart -k "gui/$(id -u)/dev.zenbu.terminal-code.local-rendering" >/dev/null 2>&1 || true
+else
+  systemctl --user try-restart terminal-code-local-rendering.service >/dev/null 2>&1 || true
+fi
 
 # the vendored electron needs the usual chromium system libraries; say which
 # ones are missing rather than failing later with a loader error
@@ -107,15 +114,15 @@ cat > "$STATE_HOME/tode/install.json" <<EOF
 EOF
 
 echo
-echo "tode $VERSION -> $APP"
-echo "binary $BIN_HOME/tode"
+echo "terminal-code $VERSION -> $APP"
+echo "binary $BIN_HOME/terminal-code (also $BIN_HOME/tode)"
 
 # no setup questions here — the first open walks import and shortcuts itself
 
 case ":$PATH:" in
   *":$BIN_HOME:"*)
     echo
-    echo "run tode to get started"
+    echo "run terminal-code to get started"
     ;;
   *)
     echo

@@ -149,7 +149,7 @@ async function startServer(): Promise<ServerState> {
       "--extensions-dir",
       path.join(VSCODE_DIR, "extensions"),
       "--app-name",
-      "tode",
+      "terminal-code",
       "--disable-telemetry",
       "--disable-update-check",
       "--disable-workspace-trust",

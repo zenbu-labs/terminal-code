@@ -144,7 +144,7 @@ export function createInjector(
   let everAnswered = false;
   const refuse = (response: http.ServerResponse, status: number, reason: string) => {
     response.writeHead(status, { "content-type": "text/plain" });
-    response.end(`tode: ${reason}\n`);
+    response.end(`terminal-code: ${reason}\n`);
   };
   const server: http.Server = http.createServer((request, response) => {
     if (!sameOrigin(request.headers)) {
@@ -155,7 +155,7 @@ export function createInjector(
       const query = new URL(request.url, "http://127.0.0.1").searchParams;
       const next = query.get("next") ?? "/";
       if (!entered(request.headers) && !redeem(query.get("ticket") ?? "")) {
-        refuse(response, 403, "this window's ticket has been used or has expired, open tode again");
+        refuse(response, 403, "this window's ticket has been used or has expired, open terminal-code again");
         return;
       }
       response.writeHead(303, {
@@ -167,7 +167,7 @@ export function createInjector(
       return;
     }
     if (!entered(request.headers)) {
-      refuse(response, 401, "only tode windows may use this port");
+      refuse(response, 401, "only terminal-code windows may use this port");
       return;
     }
     // serving the font here means the page has it whether or not it was ever
@@ -232,7 +232,7 @@ export function createInjector(
         return;
       }
       if (!response.headersSent) response.writeHead(502);
-      response.end("tode: code-server is not answering\n");
+      response.end("terminal-code: code-server is not answering\n");
     });
     request.pipe(upstream);
   });

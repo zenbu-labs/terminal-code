@@ -6,6 +6,8 @@ import { bridgeMain } from "./bridge/extension";
 import type { OpenRequest } from "./ipc";
 import { DATA_DIR } from "./runtime/paths";
 import { daemonSocket } from "./app/protocol";
+import { ATTEMPT_FILE, SETTINGS_FILE } from "./pair/settings";
+import { COMMAND } from "./runtime/shim";
 import { EXTENSIONS_DIR, LIVE_THEME_FILE, TRANSPARENCY_SETTING } from "./profile";
 import {
   IMPORT_DECISION_ID,
@@ -17,7 +19,7 @@ import {
 } from "./shortcuts/store";
 
 const BRIDGE_ID = "tode.tode-bridge";
-const BRIDGE_VERSION = "1.6.0";
+const BRIDGE_VERSION = "1.7.0";
 
 export const STARTUP_OPEN_FILE = path.join(DATA_DIR, "startup-open.json");
 
@@ -47,11 +49,18 @@ function manifest(): unknown {
         { command: "tode.quit", title: "Quit", category: "terminal-code" },
         { command: "tode.enableTransparency", title: "Enable Transparency", category: "terminal-code" },
         { command: "tode.disableTransparency", title: "Disable Transparency", category: "terminal-code" },
+        { command: "tode.enableLocalRendering", title: "Enable Local Rendering over SSH", category: "terminal-code" },
+        { command: "tode.disableLocalRendering", title: "Disable Local Rendering over SSH", category: "terminal-code" },
+        { command: "tode.setupSsh", title: "Set Up SSH Connection for Local Rendering", category: "terminal-code" },
+        { command: "tode.localRenderingDoctor", title: "Local Rendering Doctor", category: "terminal-code" },
       ],
       menus: {
         commandPalette: [
           { command: "tode.enableTransparency", when: "!tode.transparent" },
           { command: "tode.disableTransparency", when: "tode.transparent" },
+          { command: "tode.enableLocalRendering", when: "!tode.localRendering" },
+          { command: "tode.disableLocalRendering", when: "tode.localRendering" },
+          { command: "tode.setupSsh", when: "!tode.overSsh" },
         ],
       },
       configuration: {
@@ -77,7 +86,7 @@ export function quitHintMessage(): string {
     return `Press ${decision.key} to quit terminal-code`;
   }
   if (decision?.choice === "keep") {
-    return `${QUIT_CHORD} is taken. Quit terminal-code from the command palette, or run: tode --shortcut-setup`;
+    return `${QUIT_CHORD} is taken. Quit terminal-code from the command palette, or run: ${COMMAND} --shortcut-setup`;
   }
   return `Press ${QUIT_CHORD} to quit terminal-code`;
 }
@@ -109,6 +118,8 @@ export function installBridge(tode: string[]): boolean {
       startupOpenFile: STARTUP_OPEN_FILE,
       daemonSocket: daemonSocket(),
       transparencySetting: TRANSPARENCY_SETTING,
+      localRenderingSettingsFile: SETTINGS_FILE,
+      localRenderingAttemptFile: ATTEMPT_FILE,
     }),
   );
   registerBridge();
