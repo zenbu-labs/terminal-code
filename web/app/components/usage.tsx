@@ -13,7 +13,7 @@ const LINES = [
   { cmd: "terminal-code --review", note: "opens on the source control panel" },
   { cmd: "terminal-code --import", note: "imports settings, keybindings, snippets and extensions from vscode compatible editors" },
   { cmd: "terminal-code --shortcut-setup", note: "resolves shortcut conflicts between terminal-code and the current terminal" },
-  { cmd: "terminal-code --enable-local-rendering-over-ssh", note: "renders terminal-code on your own machine when you run it over ssh; run it on both" },
+  { cmd: "terminal-code --enable-local-rendering-over-ssh", note: "renders terminal-code on your own machine when you run it over ssh, must be enabled on both machines" },
   { cmd: "terminal-code --upgrade", note: "upgrades terminal-code to the latest version" },
 ];
 

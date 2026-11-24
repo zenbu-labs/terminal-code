@@ -51,8 +51,8 @@ Commands, each as the first argument:
   --enable-transparency Make the editor transparent
   --disable-transparency Make the editor opaque again
   --enable-local-rendering-over-ssh [--allow-peer <device>]
-                        Render terminal-code on your own machine when it
-                        runs over ssh; run it on the server and locally
+                        Renders terminal-code on your own machine when you run
+                        it over ssh, must be enabled on both machines
   --disable-local-rendering-over-ssh
                         Turn local rendering over ssh off on this machine
   --setup-ssh [user@host]
