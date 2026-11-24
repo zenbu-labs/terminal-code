@@ -13,6 +13,7 @@ import { Mux, nextControl } from "./link";
 import type { Control } from "./link";
 import { LINK_PROTOCOL, PIXEL_PROTOCOL } from "./settings";
 import { socksServer } from "./socks";
+import { COMMAND } from "../runtime/shim";
 
 export type Authorize = (
   hello: Control,
@@ -58,7 +59,7 @@ export async function serveLink(stream: Duplex, options: ServeOptions): Promise<
     setTimeout(() => mux.close(), 200);
     return;
   }
-  options.log(`rendering for ${verdict.who} (terminal-code ${String(hello.version)})`);
+  options.log(`rendering for ${verdict.who} (${COMMAND} ${String(hello.version)})`);
   const handled = handleLocalRendering({
     send: (message) => mux.pixel(message),
     start: (launch) => streamedWindow(launch, mux, options.log),
@@ -110,7 +111,7 @@ function streamedWindow(launch: LocalRenderLaunch, mux: Mux, log: (line: string)
 
   void (async () => {
     if (!target) {
-      log("refused to render a page that isn't the server's terminal-code");
+      log(`refused to render a page that isn't the server's ${COMMAND}`);
       return settle(1);
     }
     const front = await socksServer(target.port, () => mux.open({ type: "connect", port: target.port }));

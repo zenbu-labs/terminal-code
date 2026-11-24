@@ -46,7 +46,7 @@ async function check(target: Target): Promise<Check> {
     ok: true,
     host,
     ms: linked.ms,
-    line: `✓ ${target.label}: terminal-code ${String(linked.welcome.version)} on ${host}, answered in ${linked.ms}ms`,
+    line: `✓ ${target.label}: ${COMMAND} ${String(linked.welcome.version)} on ${host}, answered in ${linked.ms}ms`,
   };
 }
 
@@ -80,7 +80,7 @@ async function enableOnServer(): Promise<number> {
   const checks = await Promise.all(targets(true).map(check));
   const working = checks.find((c) => c.ok);
   if (working) {
-    out(`local rendering enabled (terminal-code on ${working.host} answered in ${working.ms}ms)`);
+    out(`local rendering enabled (${COMMAND} on ${working.host} answered in ${working.ms}ms)`);
     return 0;
   }
   out("local rendering enabled");
@@ -103,7 +103,7 @@ async function enableOnScreen(): Promise<number> {
     process.stderr.write(`${COMMAND}: couldn't start the listener: ${(error as Error).message}\n`);
     return 1;
   }
-  out("local rendering enabled: when terminal-code is running over ssh it will be allowed to offload rendering to your local cli");
+  out(`local rendering enabled: when ${COMMAND} is running over ssh it will be allowed to offload rendering to your local cli`);
   out();
   out(`Note: ${COMMAND} --enable-local-rendering-over-ssh must be ran on both the local and remote machine for the CLI's to pair`);
   const state = await waitForListener(8000);
@@ -141,13 +141,13 @@ function logTail(lines: number): string[] {
 export async function doctorCommand(): Promise<number> {
   const settings = readSettings();
   const ssh = sshEndpoints();
-  out("terminal-code local rendering doctor");
+  out(`${COMMAND} local rendering doctor`);
   out();
   row("version", `${installVersion()} (${installChannel()})`);
   row("local rendering", settings.enabled ? "on" : `off — turn on with ${COMMAND} --enable-local-rendering-over-ssh`);
 
   out();
-  out("this machine as the server (terminal-code here renders on your local machine)");
+  out(`this machine as the server (${COMMAND} here renders on your local machine)`);
   row("ssh session", ssh ? `from ${ssh.client} to ${ssh.server}` : "not in an ssh session");
   const address = localAddress();
   if (address) {
@@ -180,7 +180,7 @@ export async function doctorCommand(): Promise<number> {
   }
 
   out();
-  out("this machine as the screen (terminal-code on servers renders here)");
+  out(`this machine as the screen (${COMMAND} on servers renders here)`);
   const state = listenerState();
   const running = state && alive(state.pid);
   row(

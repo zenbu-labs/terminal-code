@@ -27,7 +27,7 @@ import type { OpenRequest, Reply, Request } from "./app/protocol";
 import { CSS_FILE } from "./codeserver/server";
 import { renderLocally } from "./pair/remote";
 import { bootstrapEntry, daemonEntry, electronBinary } from "./runtime/launcher";
-import { installedShim } from "./runtime/shim";
+import { COMMAND, installedShim } from "./runtime/shim";
 import type { TerminalPalette } from "./terminal/osc";
 
 const APP_NAME = "terminal-code";
@@ -95,7 +95,7 @@ async function daemonConnection(): Promise<net.Socket> {
       await sleep(100);
     }
   }
-  throw new Error("the terminal-code window process did not start");
+  throw new Error(`the ${COMMAND} window process did not start`);
 }
 
 function stale(reply: Reply): boolean {
@@ -133,7 +133,7 @@ function attachWindow(url: string, options: LaunchOptions): { exited: Promise<nu
   const exited = (async () => {
     const tty = windowTty();
     if (!tty) {
-      process.stderr.write("terminal-code needs a terminal to draw on\n");
+      process.stderr.write(`${COMMAND} needs a terminal to draw on\n`);
       return 1;
     }
     if (!hosted(tty)) {
@@ -155,7 +155,7 @@ function attachWindow(url: string, options: LaunchOptions): { exited: Promise<nu
         timingFile: `${CSS_FILE}.timing.json`,
       });
     } catch (error) {
-      process.stderr.write(`could not open the terminal-code window: ${(error as Error).message}\n`);
+      process.stderr.write(`could not open the ${COMMAND} window: ${(error as Error).message}\n`);
       return 1;
     }
     const { socket, reply } = session;
@@ -165,7 +165,7 @@ function attachWindow(url: string, options: LaunchOptions): { exited: Promise<nu
       } catch {}
     };
     if ("ok" in reply && !reply.ok) {
-      process.stderr.write(`could not open the terminal-code window: ${reply.error}\n`);
+      process.stderr.write(`could not open the ${COMMAND} window: ${reply.error}\n`);
       socket.destroy();
       return 1;
     }

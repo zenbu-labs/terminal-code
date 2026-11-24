@@ -40,7 +40,7 @@ export async function sshOpen(
 
 export function sshForward(target: string, args: string[]): number {
   const { destination, hostArgs } = resolveSshTarget(target);
-  const hint = `terminal-code is not installed on ${destination}, run: ${COMMAND} --ssh ${target}`;
+  const hint = `${COMMAND} is not installed on ${destination}, run: ${COMMAND} --ssh ${target}`;
   const command = [
     `tc="$HOME/.local/bin/terminal-code"; [ -x "$tc" ] || tc="$HOME/.local/bin/tode";`,
     `[ -x "$tc" ] || { echo '${hint}' >&2; exit 127; };`,

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { COMMAND } from "./runtime/shim";
 
 export interface OpenFile {
   path: string;
@@ -36,7 +37,7 @@ export function sendToExtension(socket: string, request: OpenRequest, timeoutMs 
     const timer = timeoutMs
       ? setTimeout(() => {
         connection.destroy();
-        reject(new Error("the terminal-code window did not answer"));
+        reject(new Error(`the ${COMMAND} window did not answer`));
       }, timeoutMs)
       : null;
     let buffer = "";

@@ -71,7 +71,7 @@ async function bootEditorUrl(): Promise<string> {
 }
 
 function fail(message: string): never {
-  process.stderr.write(`terminal-code: ${message}\n`);
+  process.stderr.write(`${COMMAND}: ${message}\n`);
   process.exit(1);
 }
 
@@ -113,7 +113,7 @@ const HELP = `Usage: ${COMMAND} [path...] [options]
   ${`${COMMAND} <folder>`.padEnd(24)}Open the specified folder
   ${`${COMMAND} <file>`.padEnd(24)}Open the specified file
 
-  ${COMMAND === "tode" ? "terminal-code is the same command under its new name." : "tode is the same command under its old name."}
+  ${COMMAND === "tode" ? "terminal-code" : "tode"} is the same command.
 
 
 Options:
@@ -130,18 +130,18 @@ Options:
   --size <fraction>     The % a new split will take up (0.2 to 0.95)
   --timing              Report how long each stage of this open took
   --review              Open on the source control panel
-  --ssh <user@host>     Run terminal-code on an ssh server
+  --ssh <user@host>     Run ${COMMAND} on an ssh server
 
 Commands, each as the first argument:
-  --shortcut-setup      Resolve shortcut conflicts between terminal-code and the current terminal
-  --timing              Profile terminal-code launch
+  --shortcut-setup      Resolve shortcut conflicts between ${COMMAND} and the current terminal
+  --timing              Profile ${COMMAND} launch
   --import [editor]     Bring settings, keybindings, snippets and extensions
                         over from vscode compatible editors
   --theme [file]        Set editor theme
   --enable-transparency Make the editor transparent
   --disable-transparency Make the editor opaque again
   --enable-local-rendering-over-ssh [--allow-peer <device>]
-                        Render terminal-code on your own machine when it
+                        Render ${COMMAND} on your own machine when it
                         runs over ssh; run it on the server and locally
   --disable-local-rendering-over-ssh
                         Turn local rendering over ssh off on this machine
@@ -153,10 +153,10 @@ Commands, each as the first argument:
                         Show any issues preventing local rendering from
                         working correctly
   --serve [path]        Start code server and print its url
-  --skill               An agent skill to assist with modifying terminal-code
-  --upgrade [--check]   Upgrade terminal-code to the latest version
-  --shutdown            Stop all terminal-code activities
-  --uninstall [--yes]   Remove all terminal-code data from this machine
+  --skill               An agent skill to assist with modifying ${COMMAND}
+  --upgrade [--check]   Upgrade ${COMMAND} to the latest version
+  --shutdown            Stop all ${COMMAND} activities
+  --uninstall [--yes]   Remove all ${COMMAND} data from this machine
 `;
 
 
@@ -193,7 +193,7 @@ function dropIgnored(args: string[]): void {
   for (const flag of IGNORED) takeBool(args, flag);
   for (const [flag, why] of UNSUPPORTED) {
     const had = takeBool(args, flag) || takeAll(args, flag).length > 0;
-    if (had) process.stderr.write(`terminal-code: ignoring ${flag}, ${why}\n`);
+    if (had) process.stderr.write(`${COMMAND}: ignoring ${flag}, ${why}\n`);
   }
 }
 
@@ -257,7 +257,7 @@ async function openCommand(args: string[]): Promise<number> {
         ...(review ? { view: "scm" } : {}),
       },
       wait ? 0 : 4000,
-    ).catch((error) => fail(`could not reach the terminal-code window: ${error.message}`));
+    ).catch((error) => fail(`could not reach the ${COMMAND} window: ${error.message}`));
     return 0;
   }
 
@@ -376,7 +376,7 @@ function manageExtensions(install: string[], remove: string[]): number {
     if (code !== 0) return code;
   }
   registerThemeExtension();
-  if (install.length > 0) process.stdout.write("open terminal-code again to pick it up\n");
+  if (install.length > 0) process.stdout.write(`open ${COMMAND} again to pick it up\n`);
   return 0;
 }
 
@@ -389,7 +389,7 @@ async function themeCommand(file?: string): Promise<number> {
   if (file) {
     const error = setThemeFile(file);
     if (error) {
-      process.stderr.write(`terminal-code: ${error}\n`);
+      process.stderr.write(`${COMMAND}: ${error}\n`);
       return 1;
     }
     installBridge(todeCommand());
@@ -438,7 +438,7 @@ function timingCommand(): number {
   try {
     page = JSON.parse(fs.readFileSync(`${CSS_FILE}.timing.json`, "utf8")) as PageTiming;
   } catch {
-    process.stdout.write("no page timing recorded yet, open terminal-code once\n");
+    process.stdout.write(`no page timing recorded yet, open ${COMMAND} once\n`);
     return 0;
   }
   let launch: { spawnedAt: number; stages: [string, number][] } | null = null;
@@ -453,7 +453,7 @@ function timingCommand(): number {
   const rows: [string, number][] = [
     ...(launch
       ? ([
-        ...launch.stages.map(([label, ms]) => [`terminal-code: ${label}`, ms - launch!.stages[launch!.stages.length - 1][1]] as [string, number]),
+        ...launch.stages.map(([label, ms]) => [`${COMMAND}: ${label}`, ms - launch!.stages[launch!.stages.length - 1][1]] as [string, number]),
       ] as [string, number][])
       : []),
     ...(beforeNavigation !== null && beforeNavigation >= 0
@@ -497,7 +497,7 @@ async function shutdownCommand(): Promise<number> {
   const notes: string[] = [];
   if (stopped.windows > 0) notes.push(`closed ${stopped.windows} window${stopped.windows === 1 ? "" : "s"}`);
   if (stopped.killed > 0) notes.push(`killed ${stopped.killed} that did not answer`);
-  process.stdout.write(`terminal-code stopped${notes.length > 0 ? `, ${notes.join(", ")}` : ""}\n`);
+  process.stdout.write(`${COMMAND} stopped${notes.length > 0 ? `, ${notes.join(", ")}` : ""}\n`);
   return 0;
 }
 
@@ -522,7 +522,7 @@ async function upgradeCommand(args: string[]): Promise<number> {
     onStage: (stage, fraction) => {
       if (stage !== "downloading") return;
       if (!announced) {
-        process.stderr.write("terminal-code: downloading\n");
+        process.stderr.write(`${COMMAND}: downloading\n`);
         announced = true;
       }
       const percent = Math.round(fraction * 100);
@@ -537,16 +537,16 @@ async function upgradeCommand(args: string[]): Promise<number> {
       fail(`${outcome.root} is a working tree, not an install — use git pull`);
     // eslint-disable-next-line no-fallthrough
     case "current":
-      process.stdout.write(`terminal-code ${outcome.version} is the newest on ${outcome.channel}\n`);
+      process.stdout.write(`${COMMAND} ${outcome.version} is the newest on ${outcome.channel}\n`);
       return 0;
     case "available":
-      process.stdout.write(`terminal-code ${outcome.build.version} is available (you have ${outcome.from})\n`);
+      process.stdout.write(`${COMMAND} ${outcome.build.version} is available (you have ${outcome.from})\n`);
       return 0;
     case "cancelled":
       process.stdout.write("cancelled\n");
       return 0;
     case "upgraded": {
-      process.stdout.write(`terminal-code ${outcome.from} -> ${outcome.build.version}\n`);
+      process.stdout.write(`${COMMAND} ${outcome.from} -> ${outcome.build.version}\n`);
       return 0;
     }
   }
@@ -556,8 +556,8 @@ async function confirmUpgrade(build: { version: string }, windows: Windows): Pro
   if (!process.stdin.isTTY || !process.stdout.isTTY) return true;
   const open =
     windows.count > 0
-      ? `${windows.count} open terminal-code window${windows.count === 1 ? "" : "s"}`
-      : "any open terminal-code windows";
+      ? `${windows.count} open ${COMMAND} window${windows.count === 1 ? "" : "s"}`
+      : `any open ${COMMAND} windows`;
   process.stdout.write(`upgrading to ${build.version} closes ${open}\n`);
   const ask = readline.createInterface({ input: process.stdin, output: process.stdout });
   const answer = await new Promise<string>((resolve) => {

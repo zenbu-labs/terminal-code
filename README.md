@@ -23,7 +23,7 @@ Usage: terminal-code [path...] [options]
   terminal-code <folder>  Open the specified folder
   terminal-code <file>    Open the specified file
 
-  tode is the same command under its old name.
+  tode is the same command.
 
 
 Options:
@@ -104,7 +104,7 @@ If you'd rather run `terminal-code` inside the ssh session itself, it can still 
 - If the server can't reach your machine, run `terminal-code --setup-ssh <user@server>` on your machine instead. It opens an ssh connection to the server and a socket there that only your user can use, for as long as that connection lasts.
 - If local rendering fails, terminal-code renders on the server as before, and the editor tells you why. `terminal-code --local-rendering-doctor` explains the connection in detail.
 
-`tode` remains available as the old name of the `terminal-code` command.
+`tode` is the same command as `terminal-code`.
 
 ### Windows
 

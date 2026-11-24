@@ -509,7 +509,7 @@ async function runManager(
   const served = manager.served();
   if (!served) {
     process.stderr.write(
-      `terminal-code: the shortcuts wizard never reached the screen (exited ${code})\n`,
+      `${COMMAND}: the shortcuts wizard never reached the screen (exited ${code})\n`,
     );
   }
   return {
@@ -578,7 +578,7 @@ export async function shortcutsCommand(
     const reloaded = undone && provider.onApplied();
     process.stdout.write(
       undone || hadDecisions
-        ? `removed terminal-code's ${provider.name} overrides and editor chords\n${reloaded ? "" : `${provider.reloadHint()}\n`}`
+        ? `removed ${COMMAND}'s ${provider.name} overrides and editor chords\n${reloaded ? "" : `${provider.reloadHint()}\n`}`
         : "nothing to undo\n",
     );
     return 0;

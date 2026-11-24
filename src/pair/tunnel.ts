@@ -188,16 +188,16 @@ export async function setupSshCommand(args: string[]): Promise<number> {
     child.kill();
     process.stderr.write(
       range[1] < LINK_PROTOCOL[0]
-        ? `terminal-code on ${destination} (${String(hello.version)}) is too old for this one. On ${destination}, run:\n    ${COMMAND} --upgrade\n`
-        : `terminal-code here (${installVersion()}) is too old for ${destination} (${String(hello.version)}). Here,\nplease run install/upgrade terminal-code (this command will upgrade if already installed):\n    ${installCommand()}\n`,
+        ? `${COMMAND} on ${destination} (${String(hello.version)}) is too old for this one. On ${destination}, run:\n    ${COMMAND} --upgrade\n`
+        : `${COMMAND} here (${installVersion()}) is too old for ${destination} (${String(hello.version)}). Here,\nplease run install/upgrade ${COMMAND} (this command will upgrade if already installed):\n    ${installCommand()}\n`,
     );
     return 1;
   }
 
   const host = String(hello.host ?? destination);
   process.stdout.write(
-    `connected to ${destination} (terminal-code ${String(hello.version)})\n` +
-      `terminal-code on ${host} now renders here\n` +
+    `connected to ${destination} (${COMMAND} ${String(hello.version)})\n` +
+      `${COMMAND} on ${host} now renders here\n` +
       `ctrl+c disconnects\n`,
   );
   keepAlive(mux, () => child.kill());
@@ -224,16 +224,16 @@ export async function setupSshCommand(args: string[]): Promise<number> {
 function explainFailure(destination: string, code: number, errors: string): number {
   if (code === 127 || errors.includes("terminal-code-missing")) {
     process.stderr.write(
-      `terminal-code isn't installed on ${destination}. On ${destination}, ` +
-        `please run install/upgrade terminal-code (this command will upgrade if already installed):\n` +
+      `${COMMAND} isn't installed on ${destination}. On ${destination}, ` +
+        `please run install/upgrade ${COMMAND} (this command will upgrade if already installed):\n` +
         `    ${installCommand()}\n`,
     );
     return 1;
   }
   if (/unknown option --local-rendering-tunnel/.test(errors)) {
     process.stderr.write(
-      `terminal-code on ${destination} is too old for --setup-ssh. On ${destination}, ` +
-        `please run install/upgrade terminal-code (this command will upgrade if already installed):\n` +
+      `${COMMAND} on ${destination} is too old for --setup-ssh. On ${destination}, ` +
+        `please run install/upgrade ${COMMAND} (this command will upgrade if already installed):\n` +
         `    ${installCommand()}\n`,
     );
     return 1;

@@ -58,15 +58,15 @@ export function summarize(failure: Failure): string {
     case "not-listening":
       return `your local machine (${failure.target}) isn't accepting local rendering`;
     case "no-answer":
-      return `something at ${failure.target} accepted the connection but never answered like terminal-code`;
+      return `something at ${failure.target} accepted the connection but never answered like ${COMMAND}`;
     case "not-allowed":
       return `your local machine refused this server: ${failure.detail}`;
     case "off-tailnet":
       return `your local machine only accepts connections over the tailnet, and this server reached it from outside (${failure.detail})`;
     case "screen-too-old":
-      return `terminal-code on your local machine${failure.peerVersion ? ` (${failure.peerVersion})` : ""} is too old for this server`;
+      return `${COMMAND} on your local machine${failure.peerVersion ? ` (${failure.peerVersion})` : ""} is too old for this server`;
     case "server-too-old":
-      return `terminal-code on this server is too old for your local machine${failure.peerVersion ? ` (${failure.peerVersion})` : ""}`;
+      return `${COMMAND} on this server is too old for your local machine${failure.peerVersion ? ` (${failure.peerVersion})` : ""}`;
     case "refused":
       return `your local machine couldn't start rendering: ${failure.detail}`;
     case "lost":
@@ -80,7 +80,7 @@ const indent = (lines: string[]) => lines.map((line) => `    ${line}`);
 
 function installSteps(): string[] {
   return [
-    `please run install/upgrade terminal-code (this command will upgrade if already installed):`,
+    `please run install/upgrade ${COMMAND} (this command will upgrade if already installed):`,
     ...indent([installCommand()]),
   ];
 }

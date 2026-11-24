@@ -13,7 +13,7 @@ import {
   INSTALL_ROOT,
   STATE_DIR,
 } from "./runtime/paths";
-import { shimPaths } from "./runtime/shim";
+import { COMMAND, shimPaths } from "./runtime/shim";
 import { ghosttyConfigDir, reloadGhostty, removeFreed } from "./shortcuts/backends/ghostty";
 
 
@@ -80,7 +80,7 @@ export async function uninstallCommand(args: string[]): Promise<number> {
       process.stderr.write("pass --yes to uninstall without a prompt\n");
       return 1;
     }
-    if (!(await confirm("Uninstall terminal-code? [y/N] "))) return 0;
+    if (!(await confirm(`Uninstall ${COMMAND}? [y/N] `))) return 0;
   }
 
   const stop = spinner("uninstalling");

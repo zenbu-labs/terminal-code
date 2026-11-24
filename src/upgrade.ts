@@ -8,7 +8,7 @@ import type { Windows } from "./app/control";
 import { stopServer } from "./codeserver/server";
 import { DEFAULT_INSTALL_ROOT, INSTALL_ROOT, STATE_DIR } from "./runtime/paths";
 import { targetTriple } from "./runtime/fetch";
-import { installedShim, shimPaths } from "./runtime/shim";
+import { COMMAND, installedShim, shimPaths } from "./runtime/shim";
 
 const ORIGIN = process.env.TODE_RELEASE_ORIGIN ?? "https://tode.sh/install";
 
@@ -47,7 +47,7 @@ function buildFor(manifest: Manifest): Build {
   const target = targetTriple();
   const build = manifest.platforms?.[target];
   if (!build) {
-    throw new Error(`terminal-code ${manifest.version} has no build for ${target}`);
+    throw new Error(`${COMMAND} ${manifest.version} has no build for ${target}`);
   }
   return { version: manifest.version, channel: manifest.channel, platform: target, ...build };
 }

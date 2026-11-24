@@ -4,6 +4,7 @@ import type { Editor } from "./editors";
 import { runImport } from "./run";
 import type { ImportReportRow } from "./web";
 import { select } from "../terminal/select";
+import { COMMAND } from "../runtime/shim";
 
 const bold = (text: string) => `\x1b[1m${text}\x1b[0m`;
 const dim = (text: string) => `\x1b[2m${text}\x1b[0m`;
@@ -34,7 +35,7 @@ export async function importCommand(args: string[]): Promise<number> {
       editors.find((candidate) => candidate.name.toLowerCase() === wanted.toLowerCase()) ?? null;
     if (!editor) {
       process.stderr.write(
-        `terminal-code: no editor called ${wanted}. Found: ${editors.map((e) => e.name).join(", ")}\n`,
+        `${COMMAND}: no editor called ${wanted}. Found: ${editors.map((e) => e.name).join(", ")}\n`,
       );
       return 1;
     }
