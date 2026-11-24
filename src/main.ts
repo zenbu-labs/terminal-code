@@ -146,10 +146,12 @@ Commands, each as the first argument:
   --disable-local-rendering-over-ssh
                         Turn local rendering over ssh off on this machine
   --setup-ssh [user@host]
-                        Connect to a server that can't reach this machine,
-                        so terminal-code there renders here
+                        Allow the local CLI to communicate to your remote CLI
+                        over ssh, used with local rendering to improve UI
+                        performance over SSH
   --local-rendering-doctor
-                        Explain the local rendering connection
+                        Show any issues preventing local rendering from
+                        working correctly
   --serve [path]        Start code server and print its url
   --skill               An agent skill to assist with modifying terminal-code
   --upgrade [--check]   Upgrade terminal-code to the latest version
