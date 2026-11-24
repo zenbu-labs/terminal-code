@@ -186,7 +186,6 @@ export async function setupSshCommand(args: string[]): Promise<number> {
   const range = Array.isArray(hello.link) ? (hello.link as number[]) : [0, 0];
   if (range[1] < LINK_PROTOCOL[0] || LINK_PROTOCOL[1] < range[0]) {
     child.kill();
-    // fixme: placeholder copy
     process.stderr.write(
       range[1] < LINK_PROTOCOL[0]
         ? `terminal-code on ${destination} (${String(hello.version)}) is too old for this one. On ${destination}, run:\n    ${COMMAND} --upgrade\n`
@@ -196,7 +195,6 @@ export async function setupSshCommand(args: string[]): Promise<number> {
   }
 
   const host = String(hello.host ?? destination);
-  // fixme: placeholder copy
   process.stdout.write(
     `connected to ${destination} (terminal-code ${String(hello.version)})\n` +
       `terminal-code on ${host} now renders here\n` +
@@ -223,7 +221,6 @@ export async function setupSshCommand(args: string[]): Promise<number> {
   return stopping ? 0 : code || 1;
 }
 
-// fixme: placeholder copy
 function explainFailure(destination: string, code: number, errors: string): number {
   if (code === 127 || errors.includes("terminal-code-missing")) {
     process.stderr.write(

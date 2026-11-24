@@ -94,7 +94,6 @@ requires:
 
 `terminal-code --ssh` improves on this by running only the backend of vscode on the remote machine. The frontend is still running locally on your device, so vscode is able to respond to interactions ~instantly. Any network requests will get proxied over the ssh connection.
 
-<!-- fixme: placeholder copy -->
 #### Local rendering over ssh
 
 If you'd rather run `terminal-code` inside the ssh session itself, it can still render on your own machine. Run `terminal-code --enable-local-rendering-over-ssh` on the server and on your local machine. terminal-code on the server then renders on your local machine, which reaches the server's code-server through the same connection, so frames never cross the network.

@@ -76,7 +76,6 @@ export async function enableCommand(args: string[]): Promise<number> {
   return enableOnScreen();
 }
 
-// fixme: placeholder copy
 async function enableOnServer(): Promise<number> {
   const checks = await Promise.all(targets(true).map(check));
   const working = checks.find((c) => c.ok);
@@ -110,7 +109,6 @@ async function enableOnScreen(): Promise<number> {
   const state = await waitForListener(8000);
   if ((state?.addresses ?? []).length > 0) return 0;
   out();
-  // fixme: placeholder copy
   if (listenAddresses().length === 0) {
     out("this machine has no tailnet address, so servers can't connect to it directly.");
     out(`servers can still render here through ${COMMAND} --setup-ssh <user@server>`);
@@ -136,7 +134,6 @@ function logTail(lines: number): string[] {
   }
 }
 
-// fixme: placeholder copy
 export async function doctorCommand(): Promise<number> {
   const settings = readSettings();
   const ssh = sshEndpoints();

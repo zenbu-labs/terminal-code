@@ -78,7 +78,6 @@ export function summarize(failure: Failure): string {
 
 const indent = (lines: string[]) => lines.map((line) => `    ${line}`);
 
-// fixme: placeholder copy
 function installSteps(): string[] {
   return [
     `please run install/upgrade terminal-code (this command will upgrade if already installed):`,
@@ -86,7 +85,6 @@ function installSteps(): string[] {
   ];
 }
 
-// fixme: placeholder copy
 export function nextSteps(failure: Failure): string[] {
   switch (failure.reason) {
     case "unreachable":

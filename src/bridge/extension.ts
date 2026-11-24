@@ -161,7 +161,6 @@ export function bridgeMain(ctx: BridgeCtx): void {
   }
 
   function runCli(title: string, args: string[]): void {
-    // fixme: placeholder copy
     const closing = "press enter to close";
     vscode.window
       .createTerminal({ name: title, shellPath: "/bin/sh", shellArgs: ["-c", '"$@"; echo; printf %s "$0"; read _', closing, ...TODE, ...args] })
