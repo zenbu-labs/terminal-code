@@ -96,15 +96,16 @@ requires:
 
 `terminal-code --ssh` improves on this by running only the backend of vscode on the remote machine. The frontend is still running locally on your device, so vscode is able to respond to interactions ~instantly. Any network requests will get proxied over the ssh connection.
 
-#### Local rendering over ssh
+### Local rendering over ssh
+terminal-code includes an experimental option which works in some terminal environments that significantly improves UI performance. You can enable this by running `terminal-code --enable-local-rendering-over-ssh` on your remote and local machine
 
-If you'd rather run `terminal-code` inside the ssh session itself, it can still render on your own machine. Run `terminal-code --enable-local-rendering-over-ssh` on the server and on your local machine. terminal-code on the server then renders on your local machine, which reaches the server's code-server through the same connection, so frames never cross the network.
+When this mode is enabled, the remote terminal-code will ask your local terminal-code to take over rendering vscode. Normally, image data about vscode needs to transfer over the network when rendering via SSH, so this mode eliminates this large bottleneck to UI performance.
 
-- The server finds your machine through the ssh connection's client address and connects to it over your tailnet. Your machine only listens on its tailnet addresses, and only accepts your own devices (as Tailscale identifies them). `--allow-peer <device>` admits another device, such as a tagged server.
-- If the server can't reach your machine, run `terminal-code --setup-ssh <user@server>` on your machine instead. It opens an ssh connection to the server and a socket there that only your user can use, for as long as that connection lasts.
-- If local rendering fails, terminal-code renders on the server as before, and the editor tells you why. `terminal-code --local-rendering-doctor` explains the connection in detail.
+The terminal-code's need to synchronize with each other for this to work, so when enabled they will try to contact each other over a network connection.
 
-`tode` is the same command as `terminal-code`.
+First it will try to reach the local machine directly from the remote machine, which will work if the 2 machines are connected over tailscale. If you do not have tailscale setup you can run `terminal-code --setup-ssh <user@server>` on your local terminal-code, which allows terminal-code to open an ssh connection to your server to communicate with your remote terminal-code.
+
+For any terminal multiplexers that wants to support this mode, you need to ensure that the programs kitty graphics commands are passed through to the local terminal un-altered. You can reference [this PR](https://github.com/zenbu-labs/terminal-browser/pull/309) for technical details
 
 ### Windows
 
