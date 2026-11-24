@@ -72,7 +72,7 @@ Commands, each as the first argument:
 
 ### How does it work?
 
-terminal-code is built on top of [pixelgui.com](https://pixelgui.com), a library for building graphical applications in the terminal, and [code-server](https://github.com/coder/code-server). You should look into these projects for more details!
+terminal-code is built on top of [pixelgui](https://pixelgui.com), a library for building graphical applications in the terminal, and [code-server](https://github.com/coder/code-server). You should look into these projects for more details!
 
 
 

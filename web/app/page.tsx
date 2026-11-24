@@ -72,7 +72,7 @@ export default function Home() {
                 rel="noreferrer"
                 className="text-text2 underline decoration-border underline-offset-[3px] transition-colors hover:text-ok hover:decoration-ok/50"
               >
-                pixelgui.com
+                pixelgui
               </a>
               , a library for building graphical applications in the terminal,
               and{" "}
