@@ -6,7 +6,7 @@ import path from "node:path";
 import { alive, kill, sleep } from "../app/control";
 import { installedShim } from "../runtime/shim";
 import { listenerState } from "./listener";
-import { LISTENER_LOG } from "./settings";
+import { LISTENER_LOG, loggingEnabled } from "./settings";
 
 const LABEL = "dev.zenbu.terminal-code.local-rendering";
 const UNIT = "terminal-code-local-rendering.service";
@@ -78,9 +78,9 @@ ${env}
   <key>ThrottleInterval</key>
   <integer>10</integer>
   <key>StandardOutPath</key>
-  <string>${xml(LISTENER_LOG)}</string>
+  <string>${xml(logPath())}</string>
   <key>StandardErrorPath</key>
-  <string>${xml(LISTENER_LOG)}</string>
+  <string>${xml(logPath())}</string>
 </dict>
 </plist>
 `;
@@ -99,8 +99,8 @@ ExecStart=${command().map(quote).join(" ")}
 ${env}
 Restart=on-failure
 RestartSec=10
-StandardOutput=append:${LISTENER_LOG}
-StandardError=append:${LISTENER_LOG}
+StandardOutput=${loggingEnabled() ? `append:${LISTENER_LOG}` : "null"}
+StandardError=${loggingEnabled() ? `append:${LISTENER_LOG}` : "null"}
 
 [Install]
 WantedBy=default.target
@@ -118,8 +118,12 @@ async function stopStray(): Promise<void> {
   if (state && state.pid !== process.pid && alive(state.pid)) await kill(state.pid);
 }
 
+function logPath(): string {
+  return loggingEnabled() ? LISTENER_LOG : "/dev/null";
+}
+
 export async function installService(): Promise<ServiceKind> {
-  fs.mkdirSync(path.dirname(LISTENER_LOG), { recursive: true });
+  if (loggingEnabled()) fs.mkdirSync(path.dirname(LISTENER_LOG), { recursive: true });
   await stopStray();
   if (process.platform === "darwin") {
     const domain = `gui/${process.getuid?.() ?? 501}`;
@@ -139,7 +143,7 @@ export async function installService(): Promise<ServiceKind> {
     spawnSync("systemctl", ["--user", "restart", UNIT], { stdio: "ignore" });
     return "systemd";
   }
-  const log = fs.openSync(LISTENER_LOG, "a");
+  const log = fs.openSync(logPath(), "a");
   const [bin, ...args] = command();
   const child = spawn(bin, args, { detached: true, stdio: ["ignore", log, log], env: { ...process.env, ...environment() } });
   child.unref();

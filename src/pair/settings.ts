@@ -50,6 +50,10 @@ export function writeSettings(settings: Settings): void {
   fs.renameSync(`${SETTINGS_FILE}.tmp`, SETTINGS_FILE);
 }
 
+export function loggingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.TERMINAL_CODE_LOCAL_RENDERING_LOG === "1";
+}
+
 export function pairPort(): number {
   const configured = Number(process.env.TERMINAL_CODE_LOCAL_RENDERING_PORT);
   return Number.isInteger(configured) && configured > 0 && configured < 65536 ? configured : DEFAULT_PORT;

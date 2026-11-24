@@ -9,7 +9,7 @@ import { listenAddresses, listenerState } from "./listener";
 import { link, localAddress, targets } from "./remote";
 import type { Target } from "./remote";
 import { installService, removeService, serviceDescription, waitForListener } from "./service";
-import { LISTENER_LOG, installChannel, pairPort, readSettings, writeSettings } from "./settings";
+import { LISTENER_LOG, installChannel, loggingEnabled, pairPort, readSettings, writeSettings } from "./settings";
 import { self, tailnetAddresses, tailscaleCli } from "./tailscale";
 
 const out = (line = "") => process.stdout.write(`${line}\n`);
@@ -113,7 +113,11 @@ async function enableOnScreen(): Promise<number> {
     out("this machine has no tailnet address, so servers can't connect to it directly.");
     out(`servers can still render here through ${COMMAND} --setup-ssh <user@server>`);
   } else {
-    out(`the listener didn't come up; see ${LISTENER_LOG}`);
+    out(
+      loggingEnabled()
+        ? `the listener didn't come up; see ${LISTENER_LOG}`
+        : "the listener didn't come up; rerun with TERMINAL_CODE_LOCAL_RENDERING_LOG=1 to log why",
+    );
   }
   return 0;
 }
@@ -206,7 +210,7 @@ export async function doctorCommand(): Promise<number> {
     `your own untagged tailnet devices${settings.allowPeers.length > 0 ? `, plus ${settings.allowPeers.join(", ")}` : ""}`,
   );
   if (process.env.TERMINAL_CODE_LOCAL_RENDERING_TRUST) row("trusted networks", process.env.TERMINAL_CODE_LOCAL_RENDERING_TRUST);
-  const tail = logTail(8);
+  const tail = loggingEnabled() ? logTail(8) : [];
   if (tail.length > 0) {
     row("log", LISTENER_LOG);
     for (const line of tail) more(line);
