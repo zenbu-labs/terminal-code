@@ -34,7 +34,7 @@ field() { node -p "require('$MANIFEST').$1"; }
 VERSION="$(field version)"
 CHANNEL="$(field channel)"
 
-wr() { (cd "$ROOT/release-worker" && npx --yes wrangler "$@"); }
+wr() { (cd "$ROOT/release-worker" && npx --no-install wrangler@4.120.0 "$@"); }
 
 put() {
   local size
