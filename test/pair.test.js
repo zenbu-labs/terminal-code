@@ -13,8 +13,9 @@ process.env.XDG_DATA_HOME = path.join(HOME, "data");
 const { Mux } = require("../dist/pair/link.js");
 const { socksServer } = require("../dist/pair/socks.js");
 const { judge, isTailnetAddress } = require("../dist/pair/tailscale.js");
-const { sshEndpoints, nextSteps } = require("../dist/pair/attempt.js");
-const { link, localAddress } = require("../dist/pair/remote.js");
+const { sshEndpoints, nextSteps, thisServer } = require("../dist/pair/attempt.js");
+const { link, localAddress, targets } = require("../dist/pair/remote.js");
+const { sshTarget } = require("../dist/pair/tunnel.js");
 const { serveLink } = require("../dist/pair/screen.js");
 const { authorizePeer } = require("../dist/pair/listener.js");
 const { LINK_PROTOCOL, TUNNELS_DIR } = require("../dist/pair/settings.js");
@@ -130,6 +131,7 @@ test("tailnet addresses and the ssh client address", () => {
   assert.deepEqual(sshEndpoints({ SSH_CONNECTION: "100.84.69.30 50000 100.117.136.47 22" }), {
     client: "100.84.69.30",
     server: "100.117.136.47",
+    port: "22",
   });
   assert.equal(localAddress({ SSH_CONNECTION: "1.2.3.4 1 5.6.7.8 22", TERMINAL_CODE_LOCAL_RENDERING_ADDRESS: "9.9.9.9" }), "9.9.9.9");
   assert.equal(localAddress({}), null);
@@ -223,4 +225,45 @@ test("the tunnel's socket is private and goes away with the connection", async (
   child.stdin.end();
   await exited;
   assert.equal(fs.existsSync(socketFile), false);
+});
+
+test("the server only connects directly to a tailnet or trusted address", async () => {
+  const target = { route: "direct", label: "10.1.2.3:47291", connect: { host: "10.1.2.3", port: 47291 }, address: "10.1.2.3" };
+  const refused = await link(target, true);
+  assert.equal(refused.reason, "untrusted-address");
+  assert.match(nextSteps(refused).join("\n"), /--setup-ssh/);
+
+  process.env.TERMINAL_CODE_LOCAL_RENDERING_TRUST = "127.0.0.1";
+  try {
+    const probe = net.createServer();
+    await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
+    const port = probe.address().port;
+    probe.close();
+    const local = { route: "direct", label: "local", connect: { host: "127.0.0.1", port }, address: "127.0.0.1" };
+    assert.equal((await link(local, true)).reason, "not-listening");
+  } finally {
+    delete process.env.TERMINAL_CODE_LOCAL_RENDERING_TRUST;
+  }
+});
+
+test("turning local rendering off on the server stops tunnels too", () => {
+  fs.mkdirSync(TUNNELS_DIR, { recursive: true });
+  const socketFile = path.join(TUNNELS_DIR, `${process.pid}.sock`);
+  fs.writeFileSync(socketFile, "");
+  try {
+    assert.deepEqual(targets(false), []);
+    assert.ok(targets(true).some((t) => t.route === "tunnel"));
+  } finally {
+    fs.rmSync(socketFile, { force: true });
+  }
+});
+
+test("the suggested --setup-ssh command carries the port, and ipv6 parses", () => {
+  const user = os.userInfo().username;
+  assert.equal(thisServer({ SSH_CONNECTION: "100.84.69.30 50000 100.117.136.47 22" }), `${user}@100.117.136.47`);
+  assert.equal(thisServer({ SSH_CONNECTION: "100.84.69.30 50000 fd7a:115c:a1e0::1 2222" }), `${user}@fd7a:115c:a1e0::1 -p 2222`);
+  assert.deepEqual(sshTarget(`${user}@fd7a:115c:a1e0::1 -p 2222`), { destination: `${user}@fd7a:115c:a1e0::1`, hostArgs: ["-p", "2222"] });
+  assert.deepEqual(sshTarget("rob@[fd7a::1]"), { destination: "rob@fd7a::1", hostArgs: [] });
+  assert.equal(sshTarget("rob@dev-mini").destination, "rob@dev-mini");
+  assert.equal(sshTarget(""), null);
 });

@@ -307,7 +307,7 @@ async function openCommand(args: string[]): Promise<number> {
   if (timing) {
     for (const [label, ms] of stages) process.stderr.write(`  ${label.padEnd(12)} ${ms}ms\n`);
   }
-  return launchBrowser(url, palette, { split, size, stages }).catch((error: Error) =>
+  return launchBrowser(url, palette, { split, size, stages, offload: true }).catch((error: Error) =>
     fail(error.message),
   );
 }
@@ -505,7 +505,7 @@ function windowCommand(args: string[]): Promise<number> {
   const flag = (name: string) => args.find((arg) => arg.startsWith(`${name}=`))?.slice(name.length + 1);
   const url = args.find((arg) => !arg.startsWith("--"));
   if (!url) fail("--window needs a url");
-  const pane = new Pane({ proxy: flag("--proxy"), partition: flag("--partition") });
+  const pane = new Pane({ proxy: flag("--proxy"), partition: flag("--partition"), offload: args.includes("--offload") });
   pane.open(url);
   return pane.exited();
 }

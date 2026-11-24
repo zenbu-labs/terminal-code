@@ -84,6 +84,11 @@ for NAME in terminal-code tode; do
   cp "$APP/bin/tode" "$BIN_HOME/$NAME"
   chmod +x "$BIN_HOME/$NAME"
 done
+if [ "$(uname -s)" = Darwin ]; then
+  launchctl kickstart -k "gui/$(id -u)/dev.zenbu.terminal-code.local-rendering" >/dev/null 2>&1 || true
+else
+  systemctl --user try-restart terminal-code-local-rendering.service >/dev/null 2>&1 || true
+fi
 
 # the vendored electron needs the usual chromium system libraries; say which
 # ones are missing rather than failing later with a loader error

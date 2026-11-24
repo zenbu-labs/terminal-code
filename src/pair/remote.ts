@@ -15,6 +15,7 @@ import type { Failure, Reason, Route } from "./attempt";
 import { Mux, nextControl, pipeBoth } from "./link";
 import type { Control } from "./link";
 import { LINK_PROTOCOL, PIXEL_PROTOCOL, TUNNELS_DIR, pairPort, readSettings } from "./settings";
+import { isTailnetAddress, trusted } from "./tailscale";
 
 const DIRECT_TIMEOUT_MS = 2500;
 const HANDSHAKE_TIMEOUT_MS = 6000;
@@ -23,6 +24,7 @@ export interface Target {
   route: Route;
   label: string;
   connect: net.NetConnectOpts;
+  address?: string;
   socketFile?: string;
 }
 
@@ -51,18 +53,20 @@ export function tunnelSockets(): string[] {
 }
 
 export function targets(enabled = readSettings().enabled): Target[] {
+  if (!enabled) return [];
   const found: Target[] = tunnelSockets().map((socketFile) => ({
     route: "tunnel" as const,
     label: `ssh tunnel ${path.basename(socketFile)}`,
     connect: { path: socketFile },
     socketFile,
   }));
-  const address = enabled ? localAddress() : null;
+  const address = localAddress();
   if (address) {
     found.push({
       route: "direct",
       label: `${address.includes(":") ? `[${address}]` : address}:${pairPort()}`,
       connect: { host: address, port: pairPort() },
+      address,
     });
   }
   return found;
@@ -107,6 +111,14 @@ function olderLink(theirs: unknown): "screen" | "server" {
 
 export async function link(target: Target, probe = false): Promise<Linked | Failure> {
   const begun = Date.now();
+  if (target.address && !isTailnetAddress(target.address) && !trusted(target.address)) {
+    return {
+      route: target.route,
+      target: target.label,
+      reason: "untrusted-address",
+      detail: `${target.address} is not a tailnet address`,
+    };
+  }
   let socket: net.Socket;
   try {
     socket = await dial(target);

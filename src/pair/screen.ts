@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type net from "node:net";
 import os from "node:os";
 import type { Duplex } from "node:stream";
@@ -9,11 +10,11 @@ import { linesOf } from "../app/control";
 import { installVersion } from "../app/protocol";
 import type { Reply } from "../app/protocol";
 import { openSession } from "../launch";
+import { COMMAND } from "../runtime/shim";
 import { Mux, nextControl } from "./link";
 import type { Control } from "./link";
 import { LINK_PROTOCOL, PIXEL_PROTOCOL } from "./settings";
 import { socksServer } from "./socks";
-import { COMMAND } from "../runtime/shim";
 
 export type Authorize = (
   hello: Control,
@@ -92,9 +93,6 @@ function windowMeta(meta: unknown): WindowMeta | null {
   return { url: parsed.toString(), port: given.port, host };
 }
 
-function partitionFor(host: string): string {
-  return `persist:pair-${host.toLowerCase().replace(/[^a-z0-9.-]/g, "_").slice(0, 64)}`;
-}
 
 function streamedWindow(launch: LocalRenderLaunch, mux: Mux, log: (line: string) => void): Started {
   const target = windowMeta(launch.meta);
@@ -123,7 +121,7 @@ function streamedWindow(launch: LocalRenderLaunch, mux: Mux, log: (line: string)
       url: target.url,
       env: launch.env,
       proxy: `socks5://127.0.0.1:${front.port}`,
-      partition: partitionFor(target.host),
+      partition: `pair-${randomUUID()}`,
     });
     socket = session.socket;
     if ("ok" in session.reply && !session.reply.ok) {

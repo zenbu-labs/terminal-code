@@ -69,12 +69,12 @@ export async function runTunnel(): Promise<number> {
   return new Promise<number>(() => {});
 }
 
-const REMOTE_SCRIPT = [
-  `tc="$HOME/.local/bin/terminal-code"`,
-  `[ -x "$tc" ] || tc="$HOME/.local/bin/tode"`,
-  `[ -x "$tc" ] || { echo "terminal-code-missing" >&2; exit 127; }`,
-  `exec "$tc" --local-rendering-tunnel`,
-].join("; ");
+const REMOTE_SCRIPT =
+  'bin="${XDG_BIN_HOME:-$HOME/.local/bin}"; ' +
+  'for tc in "$bin/terminal-code" "$bin/tode" "$HOME/.local/bin/terminal-code" "$HOME/.local/bin/tode" ' +
+  '"$(command -v terminal-code)" "$(command -v tode)"; do ' +
+  '[ -n "$tc" ] && [ -x "$tc" ] && exec "$tc" --local-rendering-tunnel; done; ' +
+  'echo "terminal-code-missing" >&2; exit 127';
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
@@ -84,11 +84,37 @@ function ask(question: string): Promise<string> {
   const prompt = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => {
     prompt.question(question, (answer) => {
-      prompt.close();
       resolve(answer.trim());
+      prompt.close();
     });
     prompt.on("close", () => resolve(""));
   });
+}
+
+const WITH_VALUE = new Set(["-b", "-c", "-E", "-F", "-i", "-J", "-l", "-m", "-o", "-p"]);
+
+export function sshTarget(target: string): { destination: string; hostArgs: string[] } | null {
+  const words = target.trim().split(/\s+/).filter(Boolean);
+  if (words[0] === "ssh") words.shift();
+  if (words.length === 1) {
+    try {
+      return resolveSshTarget(words[0]);
+    } catch {}
+  }
+  let destination: string | null = null;
+  const hostArgs: string[] = [];
+  for (let at = 0; at < words.length; at++) {
+    const word = words[at];
+    if (word.startsWith("-")) {
+      hostArgs.push(word);
+      if (WITH_VALUE.has(word) && at + 1 < words.length) hostArgs.push(words[++at]);
+    } else if (destination === null) {
+      destination = word.replace(/^(.*@)?\[(.*)\]$/, "$1$2");
+    } else {
+      hostArgs.push(word);
+    }
+  }
+  return destination ? { destination, hostArgs } : null;
 }
 
 function stamp(): string {
@@ -127,14 +153,12 @@ export async function setupSshCommand(args: string[]): Promise<number> {
     target = await ask("ssh destination (user@host): ");
     if (!target) return 1;
   }
-  let destination: string;
-  let hostArgs: string[];
-  try {
-    ({ destination, hostArgs } = resolveSshTarget(target));
-  } catch (error) {
-    process.stderr.write(`${COMMAND}: ${(error as Error).message}\n`);
+  const parsed = sshTarget(target);
+  if (!parsed) {
+    process.stderr.write(`${COMMAND}: --setup-ssh needs a destination (user@host)\n`);
     return 1;
   }
+  const { destination, hostArgs } = parsed;
 
   const batch = spawnSync("ssh", [...hostArgs, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", destination, "true"], {
     encoding: "utf8",

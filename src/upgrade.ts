@@ -6,6 +6,7 @@ import path from "node:path";
 import { openWindows, shutdownDaemons } from "./app/control";
 import type { Windows } from "./app/control";
 import { stopServer } from "./codeserver/server";
+import { restartService } from "./pair/service";
 import { DEFAULT_INSTALL_ROOT, INSTALL_ROOT, STATE_DIR } from "./runtime/paths";
 import { targetTriple } from "./runtime/fetch";
 import { COMMAND, installedShim, shimPaths } from "./runtime/shim";
@@ -181,6 +182,8 @@ export async function upgrade(options: UpgradeOptions = {}): Promise<Outcome> {
       fs.chmodSync(shim, 0o755);
     }
   }
+
+  await restartService();
 
   return { kind: "upgraded", from: here.version, build };
 }

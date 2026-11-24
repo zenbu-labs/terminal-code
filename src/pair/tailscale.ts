@@ -42,6 +42,20 @@ export function isTailnetAddress(address: string): boolean {
   return net.isIPv6(ip) && ip.toLowerCase().startsWith("fd7a:115c:a1e0:");
 }
 
+export function trusted(address: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const ip = plainAddress(address);
+  const list = new net.BlockList();
+  for (const entry of (env.TERMINAL_CODE_LOCAL_RENDERING_TRUST ?? "").split(",").map((e) => e.trim()).filter(Boolean)) {
+    const [base, bits] = entry.split("/");
+    const family = net.isIPv6(base) ? "ipv6" : "ipv4";
+    try {
+      if (bits === undefined) list.addAddress(base, family);
+      else list.addSubnet(base, Number(bits), family);
+    } catch {}
+  }
+  return net.isIP(ip) !== 0 && list.check(ip, net.isIPv6(ip) ? "ipv6" : "ipv4");
+}
+
 export function tailnetAddresses(): string[] {
   const found: string[] = [];
   for (const entries of Object.values(os.networkInterfaces())) {

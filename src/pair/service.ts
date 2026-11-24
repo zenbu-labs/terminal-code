@@ -113,9 +113,26 @@ function hasSystemd(): boolean {
 
 export type ServiceKind = "launchd" | "systemd" | "process";
 
+function isListener(pid: number): boolean {
+  const listed = spawnSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
+  return listed.status === 0 && listed.stdout.includes(LISTENER_FLAG);
+}
+
 async function stopStray(): Promise<void> {
   const state = listenerState();
-  if (state && state.pid !== process.pid && alive(state.pid)) await kill(state.pid);
+  if (state && state.pid !== process.pid && alive(state.pid) && isListener(state.pid)) await kill(state.pid);
+}
+
+export async function restartService(): Promise<void> {
+  if (process.platform === "darwin" && fs.existsSync(PLIST)) {
+    spawnSync("launchctl", ["kickstart", "-k", `gui/${process.getuid?.() ?? 501}/${LABEL}`], { stdio: "ignore" });
+  } else if (fs.existsSync(UNIT_FILE)) {
+    spawnSync("systemctl", ["--user", "try-restart", UNIT], { stdio: "ignore" });
+  } else {
+    const state = listenerState();
+    if (!state || !alive(state.pid) || !isListener(state.pid)) return;
+    await installService();
+  }
 }
 
 function logPath(): string {

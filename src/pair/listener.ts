@@ -4,7 +4,7 @@ import net from "node:net";
 import { LISTENER_FILE, PAIR_DIR, SETTINGS_FILE, pairPort, privateDir, readSettings } from "./settings";
 import { serveLink } from "./screen";
 import type { Authorize } from "./screen";
-import { isTailnetAddress, judge, plainAddress, self, tailnetAddresses, tailscaleCli, whois } from "./tailscale";
+import { isTailnetAddress, judge, plainAddress, self, tailnetAddresses, tailscaleCli, trusted, whois } from "./tailscale";
 
 const RESCAN_MS = 10_000;
 
@@ -22,23 +22,10 @@ export function listenAddresses(env: NodeJS.ProcessEnv = process.env): string[] 
   return configured && configured.length > 0 ? configured : tailnetAddresses();
 }
 
-export function trustedNetworks(env: NodeJS.ProcessEnv = process.env): net.BlockList {
-  const list = new net.BlockList();
-  for (const entry of (env.TERMINAL_CODE_LOCAL_RENDERING_TRUST ?? "").split(",").map((e) => e.trim()).filter(Boolean)) {
-    const [address, bits] = entry.split("/");
-    const family = net.isIPv6(address) ? "ipv6" : "ipv4";
-    try {
-      if (bits === undefined) list.addAddress(address, family);
-      else list.addSubnet(address, Number(bits), family);
-    } catch {}
-  }
-  return list;
-}
-
 export function authorizePeer(remoteAddress: string, env: NodeJS.ProcessEnv = process.env): Authorize {
   const ip = plainAddress(remoteAddress);
   return async () => {
-    if (trustedNetworks(env).check(ip, net.isIPv6(ip) ? "ipv6" : "ipv4")) return { ok: true, who: `${ip} (trusted network)` };
+    if (trusted(ip, env)) return { ok: true, who: `${ip} (trusted network)` };
     if (!isTailnetAddress(ip)) return { ok: false, who: ip, why: `${ip} is not a tailnet address`, reason: "off-tailnet" };
     const cli = tailscaleCli();
     if (!cli) return { ok: false, who: ip, why: "the tailscale CLI isn't installed here, so the connection can't be verified" };

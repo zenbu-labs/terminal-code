@@ -39,12 +39,14 @@ export interface LaunchOptions {
   stages?: [string, number][];
   proxy?: string;
   partition?: string;
+  offload?: boolean;
 }
 
 function windowCommand(url: string, options: LaunchOptions): string[] {
   const command = [process.execPath, path.resolve(__dirname, "main.js"), "--window", url];
   if (options.proxy) command.push(`--proxy=${options.proxy}`);
   if (options.partition) command.push(`--partition=${options.partition}`);
+  if (options.offload) command.push("--offload");
   return command;
 }
 
@@ -252,7 +254,7 @@ export class Pane {
   }
 
   private async openHere(url: string): Promise<number> {
-    const local = this.options.proxy ? null : await renderLocally(url);
+    const local = this.options.offload && !this.options.proxy ? await renderLocally(url) : null;
     if (typeof local === "number") return local;
     const window = attachWindow(local ?? url, this.options);
     this.closeWindow = () => window.close();

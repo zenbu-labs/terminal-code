@@ -10,6 +10,7 @@ export type Reason =
   | "no-answer"
   | "not-allowed"
   | "off-tailnet"
+  | "untrusted-address"
   | "screen-too-old"
   | "server-too-old"
   | "refused"
@@ -39,16 +40,17 @@ export interface Attempt {
   toasted?: number;
 }
 
-export function sshEndpoints(env: NodeJS.ProcessEnv = process.env): { client: string; server: string } | null {
+export function sshEndpoints(env: NodeJS.ProcessEnv = process.env): { client: string; server: string; port?: string } | null {
   const connection = (env.SSH_CONNECTION ?? "").trim().split(/\s+/);
-  if (connection.length >= 3 && connection[0]) return { client: connection[0], server: connection[2] };
+  if (connection.length >= 3 && connection[0]) return { client: connection[0], server: connection[2], port: connection[3] };
   const client = (env.SSH_CLIENT ?? "").trim().split(/\s+/)[0];
   return client ? { client, server: os.hostname() } : null;
 }
 
-function thisServer(): string {
-  const server = sshEndpoints()?.server ?? os.hostname();
-  return `${os.userInfo().username}@${server.includes(":") ? `[${server}]` : server}`;
+export function thisServer(env: NodeJS.ProcessEnv = process.env): string {
+  const ssh = sshEndpoints(env);
+  const port = ssh?.port && ssh.port !== "22" ? ` -p ${ssh.port}` : "";
+  return `${os.userInfo().username}@${ssh?.server ?? os.hostname()}${port}`;
 }
 
 export function summarize(failure: Failure): string {
@@ -63,6 +65,8 @@ export function summarize(failure: Failure): string {
       return `your local machine refused this server: ${failure.detail}`;
     case "off-tailnet":
       return `your local machine only accepts connections over the tailnet, and this server reached it from outside (${failure.detail})`;
+    case "untrusted-address":
+      return `your ssh connection didn't come over the tailnet (${failure.detail}), so this server won't connect to it directly`;
     case "screen-too-old":
       return `${COMMAND} on your local machine${failure.peerVersion ? ` (${failure.peerVersion})` : ""} is too old for this server`;
     case "server-too-old":
@@ -89,6 +93,7 @@ export function nextSteps(failure: Failure): string[] {
   switch (failure.reason) {
     case "unreachable":
     case "off-tailnet":
+    case "untrusted-address":
       return [
         "Connect from your local machine to this server instead. On your local machine, run:",
         ...indent([`${COMMAND} --setup-ssh ${thisServer()}`]),
