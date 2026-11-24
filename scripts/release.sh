@@ -50,6 +50,7 @@ APP="$ROOT/node_modules/@zenbu-labs/pixel/electron/dist/Electron.app/Contents"
 HELPER="$APP/Frameworks/Electron Helper.app/Contents/MacOS/Electron Helper"
 [ -x "$HELPER" ] || HELPER="$APP/MacOS/pixel"
 export ELECTRON_RUN_AS_NODE=1
+export TERMINAL_CODE_COMMAND="$(basename "$0")"
 exec "$HELPER" "$ROOT/dist/main.js" "$@"
 SHIM
     ELECTRON_PIECE="$STAGE/node_modules/@zenbu-labs/pixel/electron/dist/Electron.app"
@@ -59,6 +60,7 @@ SHIM
 #!/bin/sh
 ROOT="${TODE_INSTALL_ROOT:-$HOME/.local/lib/tode}"
 export ELECTRON_RUN_AS_NODE=1
+export TERMINAL_CODE_COMMAND="$(basename "$0")"
 exec "$ROOT/node_modules/@zenbu-labs/pixel/electron/dist/pixel" "$ROOT/dist/main.js" "$@"
 SHIM
     ELECTRON_PIECE="$STAGE/node_modules/@zenbu-labs/pixel/electron/dist/pixel"

@@ -42,6 +42,7 @@ APP="$ROOT/node_modules/@zenbu-labs/pixel/electron/dist/Electron.app/Contents"
 HELPER="$APP/Frameworks/Electron Helper.app/Contents/MacOS/Electron Helper"
 [ -x "$HELPER" ] || HELPER="$APP/MacOS/pixel"
 export ELECTRON_RUN_AS_NODE=1
+export TERMINAL_CODE_COMMAND="$(basename "$0")"
 exec "$HELPER" "$ROOT/dist/main.js" "$@"
 SHIM
     ;;
@@ -50,6 +51,7 @@ SHIM
 #!/bin/sh
 ROOT="${TODE_INSTALL_ROOT:-$HOME/.local/lib/tode}"
 export ELECTRON_RUN_AS_NODE=1
+export TERMINAL_CODE_COMMAND="$(basename "$0")"
 exec "$ROOT/node_modules/@zenbu-labs/pixel/electron/dist/pixel" "$ROOT/dist/main.js" "$@"
 SHIM
     ;;
@@ -64,9 +66,11 @@ mv "$STAGE" "$APP"
 rm -rf "$APP.old"
 
 mkdir -p "$BIN_HOME"
-cp "$APP/bin/tode" "$BIN_HOME/tode"
-chmod +x "$BIN_HOME/tode"
+for NAME in terminal-code tode; do
+  cp "$APP/bin/tode" "$BIN_HOME/$NAME"
+  chmod +x "$BIN_HOME/$NAME"
+done
 
 echo "installed $VERSION"
 echo "  app  $APP"
-echo "  bin  $BIN_HOME/tode"
+echo "  bin  $BIN_HOME/terminal-code (also $BIN_HOME/tode)"

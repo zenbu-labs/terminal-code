@@ -7,6 +7,7 @@ import { connectSsh, resolveSshTarget } from "@zenbu-labs/pixel/ssh";
 import { Pane } from "./launch";
 import { EXTENSIONS_DIR, USER_DIR } from "./profile";
 import { STATE_DIR } from "./runtime/paths";
+import { COMMAND } from "./runtime/shim";
 import type { TerminalPalette } from "./terminal/osc";
 
 const REMOTE_BUNDLES_DIR = "${XDG_DATA_HOME:-$HOME/.local/share}/tode/bundles";
@@ -39,11 +40,11 @@ export async function sshOpen(
 
 export function sshForward(target: string, args: string[]): number {
   const { destination, hostArgs } = resolveSshTarget(target);
-  const tode = '"$HOME/.local/bin/tode"';
-  const hint = `tode is not installed on ${destination}, run: tode --ssh ${target}`;
+  const hint = `terminal-code is not installed on ${destination}, run: ${COMMAND} --ssh ${target}`;
   const command = [
-    `[ -x ${tode} ] || { echo '${hint}' >&2; exit 127; };`,
-    `exec ${tode}`,
+    `tc="$HOME/.local/bin/terminal-code"; [ -x "$tc" ] || tc="$HOME/.local/bin/tode";`,
+    `[ -x "$tc" ] || { echo '${hint}' >&2; exit 127; };`,
+    `exec "$tc"`,
     ...args.map(shellQuote),
   ].join(" ");
   const result = spawnSync("ssh", [...hostArgs, destination, command], { stdio: "inherit" });
@@ -80,7 +81,7 @@ elif [ "$have" != "$want" ]; then
   curl -fsSL "https://tode.sh/install/v/$want" | bash
 fi
 "$tode" --help 2>/dev/null | grep -q -- --serve || {
-  echo "the tode on this server ($("$tode" --version 2>/dev/null)) does not support --serve" >&2
+  echo "the terminal-code on this server ($("$tode" --version 2>/dev/null)) does not support --serve" >&2
   exit 1
 }
 `,

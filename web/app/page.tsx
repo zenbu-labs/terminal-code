@@ -116,7 +116,7 @@ export default function Home() {
               target="_blank"
               rel="noreferrer"
               aria-label="terminal-code on GitHub"
-              title="zenbu-labs/tode"
+              title="zenbu-labs/terminal-code"
               className="flex items-center text-faint transition-colors hover:text-text2"
             >
               <GithubMark size={14} />

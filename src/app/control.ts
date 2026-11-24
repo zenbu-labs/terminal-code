@@ -53,8 +53,8 @@ export function ask(socket: net.Socket, request: Request, timeoutMs: number): Pr
       outcome();
     };
     const onLine = (reply: Reply) => settle(() => resolve(reply));
-    const onClose = () => settle(() => reject(new Error("the tode window process closed the connection")));
-    const timer = setTimeout(() => settle(() => reject(new Error("the tode window process did not answer"))), timeoutMs);
+    const onClose = () => settle(() => reject(new Error("the terminal-code window process closed the connection")));
+    const timer = setTimeout(() => settle(() => reject(new Error("the terminal-code window process did not answer"))), timeoutMs);
     emitter.once("line", onLine);
     socket.once("close", onClose);
     socket.write(`${JSON.stringify(request)}\n`);

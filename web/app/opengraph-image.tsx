@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-/* The og card is the homepage demo as a still: a terminal where `tode` was
+/* The og card is the homepage demo as a still: a terminal where `terminal-code` was
    just typed and VS Code opened inside it. Rebuilt with satori-safe flexbox
    and inline styles. Palette comes from globals.css (dark). */
 
@@ -175,7 +175,7 @@ export default async function Image() {
           <div style={{ width: 13, height: 30, marginLeft: 7, backgroundColor: C.ok, display: "flex" }} />
         </div>
 
-        {/* the terminal window: `tode` typed, the editor opened */}
+        {/* the terminal window: `terminal-code` typed, the editor opened */}
         <div
           style={{
             display: "flex",
@@ -215,7 +215,7 @@ export default async function Image() {
             <span style={{ color: C.promptPath, fontWeight: 700 }}>~/my-app</span>
             <span style={{ marginLeft: 10, color: C.promptBranch }}>main</span>
             <span style={{ marginLeft: 14, color: C.ok }}>&gt;</span>
-            <span style={{ marginLeft: 10, color: C.text }}>tode</span>
+            <span style={{ marginLeft: 10, color: C.text }}>terminal-code</span>
           </div>
 
           {/* vscode, filling the rest of the terminal */}

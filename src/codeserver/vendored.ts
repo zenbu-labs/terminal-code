@@ -49,7 +49,7 @@ export function narrateFetch(label: string): (fraction: number) => void {
   let lastPercent = -1;
   return (fraction) => {
     if (!announced) {
-      process.stderr.write(`tode: fetching ${label}\n`);
+      process.stderr.write(`terminal-code: fetching ${label}\n`);
       announced = true;
     }
     const percent = Math.round(fraction * 100);

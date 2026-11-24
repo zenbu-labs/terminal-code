@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "bin": {
+    "terminal-code": "./dist/main.js",
     "tode": "./dist/main.js"
   },
   "scripts": {
@@ -23,10 +24,10 @@
     "vite": "^8.2.1"
   },
   "dependencies": {
-    "@zenbu-labs/pixel": "0.3.2",
+    "@zenbu-labs/pixel": "0.3.3",
     "react": "^18.3.1"
   },
   "allowScripts": {
-    "@zenbu-labs/pixel@0.3.2": true
+    "@zenbu-labs/pixel@0.3.3": true
   }
 }

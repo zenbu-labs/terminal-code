@@ -1,10 +1,10 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 
 import { shutdownDaemons } from "./app/control";
 import { stopServer } from "./codeserver/server";
+import { removeService } from "./pair/service";
 import { FONT_ASSET, assetPath, userFontsDir } from "./profile";
 import {
   CACHE_DIR,
@@ -13,6 +13,7 @@ import {
   INSTALL_ROOT,
   STATE_DIR,
 } from "./runtime/paths";
+import { shimPaths } from "./runtime/shim";
 import { ghosttyConfigDir, reloadGhostty, removeFreed } from "./shortcuts/backends/ghostty";
 
 
@@ -46,19 +47,16 @@ function removeFont(): boolean {
 }
 
 function removeShim(): boolean {
-  const binHome =
-    process.env.XDG_BIN_HOME && path.isAbsolute(process.env.XDG_BIN_HOME)
-      ? process.env.XDG_BIN_HOME
-      : path.join(os.homedir(), ".local", "bin");
-  const shim = path.join(binHome, "tode");
-  try {
-    const contents = fs.readFileSync(shim, "utf8");
-    if (!contents.includes("TODE_INSTALL_ROOT")) return false;
-    fs.rmSync(shim, { force: true });
-    return true;
-  } catch {
-    return false;
+  let removed = false;
+  for (const shim of shimPaths()) {
+    try {
+      const contents = fs.readFileSync(shim, "utf8");
+      if (!contents.includes("TODE_INSTALL_ROOT")) continue;
+      fs.rmSync(shim, { force: true });
+      removed = true;
+    } catch {}
   }
+  return removed;
 }
 
 function spinner(label: string): () => void {
@@ -89,6 +87,7 @@ export async function uninstallCommand(args: string[]): Promise<number> {
 
   await shutdownDaemons();
   await stopServer();
+  await removeService();
 
   if (removeFreed(ghosttyConfigDir())) reloadGhostty();
 

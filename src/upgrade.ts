@@ -8,6 +8,7 @@ import type { Windows } from "./app/control";
 import { stopServer } from "./codeserver/server";
 import { DEFAULT_INSTALL_ROOT, INSTALL_ROOT, STATE_DIR } from "./runtime/paths";
 import { targetTriple } from "./runtime/fetch";
+import { installedShim, shimPaths } from "./runtime/shim";
 
 const ORIGIN = process.env.TODE_RELEASE_ORIGIN ?? "https://tode.sh/install";
 
@@ -46,7 +47,7 @@ function buildFor(manifest: Manifest): Build {
   const target = targetTriple();
   const build = manifest.platforms?.[target];
   if (!build) {
-    throw new Error(`tode ${manifest.version} has no build for ${target}`);
+    throw new Error(`terminal-code ${manifest.version} has no build for ${target}`);
   }
   return { version: manifest.version, channel: manifest.channel, platform: target, ...build };
 }
@@ -172,14 +173,13 @@ export async function upgrade(options: UpgradeOptions = {}): Promise<Outcome> {
   }
   writeReceipt(build);
 
-  const shim = path.join(
-    process.env.XDG_BIN_HOME ?? path.join(process.env.HOME ?? "", ".local", "bin"),
-    "tode",
-  );
   const shipped = path.join(INSTALL_ROOT, "bin", "tode");
-  if (fs.existsSync(shim) && fs.existsSync(shipped)) {
-    fs.copyFileSync(shipped, shim);
-    fs.chmodSync(shim, 0o755);
+  if (fs.existsSync(shipped) && installedShim()) {
+    for (const shim of shimPaths()) {
+      fs.mkdirSync(path.dirname(shim), { recursive: true });
+      fs.copyFileSync(shipped, shim);
+      fs.chmodSync(shim, 0o755);
+    }
   }
 
   return { kind: "upgraded", from: here.version, build };

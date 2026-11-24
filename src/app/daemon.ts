@@ -3,7 +3,7 @@ import net from "node:net";
 import path from "node:path";
 
 import { app, ipcMain } from "@zenbu-labs/pixel/electron";
-import { WebView, createRoot } from "@zenbu-labs/pixel";
+import { STREAM_ENV, WebView, createRoot, terminalFromEnv } from "@zenbu-labs/pixel";
 import type { Root, WebViewHandle } from "@zenbu-labs/pixel";
 import { createElement } from "react";
 
@@ -118,10 +118,11 @@ function applyTransparency(on: boolean) {
 }
 
 function openWindow(request: OpenRequest, onClosed: (code: number) => void): Root {
+  const streamed = Boolean(request.env[STREAM_ENV]);
   const root = createRoot({
-    name: "tode",
-    tty: request.tty,
-    sessionEnv: request.env,
+    name: "terminal-code",
+    tty: streamed ? undefined : request.tty,
+    sessionEnv: streamed ? { ...terminalFromEnv(request.env), ...request.env } : request.env,
     onExit(code) {
       if (!windows.delete(root)) return;
       onClosed(code);
@@ -211,7 +212,7 @@ function serve() {
     connection.on("close", () => root?.stop());
   });
   server.on("error", (error) => {
-    process.stderr.write(`tode window: socket error: ${error.message}\n`);
+    process.stderr.write(`terminal-code window: socket error: ${error.message}\n`);
     app.exit(1);
   });
   server.listen(SOCKET);

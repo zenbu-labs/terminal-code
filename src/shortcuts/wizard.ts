@@ -16,6 +16,7 @@ import { defaultBinding } from "./vscode-keymap";
 import { startManager } from "./web";
 import type { ManagerDeps, ManagerRow } from "./web";
 import { words } from "./words";
+import { COMMAND } from "../runtime/shim";
 
 const dim = (text: string) => `\x1b[2m${text}\x1b[0m`;
 
@@ -508,7 +509,7 @@ async function runManager(
   const served = manager.served();
   if (!served) {
     process.stderr.write(
-      `tode: the shortcuts wizard never reached the screen (exited ${code})\n`,
+      `terminal-code: the shortcuts wizard never reached the screen (exited ${code})\n`,
     );
   }
   return {
@@ -577,7 +578,7 @@ export async function shortcutsCommand(
     const reloaded = undone && provider.onApplied();
     process.stdout.write(
       undone || hadDecisions
-        ? `removed tode's ${provider.name} overrides and editor chords\n${reloaded ? "" : `${provider.reloadHint()}\n`}`
+        ? `removed terminal-code's ${provider.name} overrides and editor chords\n${reloaded ? "" : `${provider.reloadHint()}\n`}`
         : "nothing to undo\n",
     );
     return 0;
@@ -598,7 +599,7 @@ export async function shortcutsCommand(
   }
 
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    process.stdout.write("run tode --shortcut-setup in a terminal to continue\n");
+    process.stdout.write(`run ${COMMAND} --shortcut-setup in a terminal to continue\n`);
     return 0;
   }
 

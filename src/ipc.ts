@@ -36,7 +36,7 @@ export function sendToExtension(socket: string, request: OpenRequest, timeoutMs 
     const timer = timeoutMs
       ? setTimeout(() => {
         connection.destroy();
-        reject(new Error("the tode window did not answer"));
+        reject(new Error("the terminal-code window did not answer"));
       }, timeoutMs)
       : null;
     let buffer = "";

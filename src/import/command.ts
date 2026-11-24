@@ -34,7 +34,7 @@ export async function importCommand(args: string[]): Promise<number> {
       editors.find((candidate) => candidate.name.toLowerCase() === wanted.toLowerCase()) ?? null;
     if (!editor) {
       process.stderr.write(
-        `tode: no editor called ${wanted}. Found: ${editors.map((e) => e.name).join(", ")}\n`,
+        `terminal-code: no editor called ${wanted}. Found: ${editors.map((e) => e.name).join(", ")}\n`,
       );
       return 1;
     }

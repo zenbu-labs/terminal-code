@@ -5,4 +5,6 @@ export interface BridgeCtx {
   startupOpenFile: string;
   daemonSocket: string;
   transparencySetting: string;
+  localRenderingSettingsFile: string;
+  localRenderingAttemptFile: string;
 }

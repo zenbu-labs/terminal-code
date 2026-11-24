@@ -16,12 +16,14 @@ curl -fsSL https://tode.sh/install | bash
 
 ### Usage
 ```
-Usage: tode [path...] [options]
-       tode --<command>
+Usage: terminal-code [path...] [options]
+       terminal-code --<command>
 
-  tode                  Open the folder in the current working directory
-  tode <folder>         Open the specified folder
-  tode <file>           Open the specified file
+  terminal-code           Open the folder in the current working directory
+  terminal-code <folder>  Open the specified folder
+  terminal-code <file>    Open the specified file
+
+  tode is the same command under its old name.
 
 
 Options:
@@ -48,6 +50,16 @@ Commands, each as the first argument:
   --theme [file]        Set editor theme
   --enable-transparency Make the editor transparent
   --disable-transparency Make the editor opaque again
+  --enable-local-rendering-over-ssh [--allow-peer <device>]
+                        Render terminal-code on your own machine when it
+                        runs over ssh; run it on the server and locally
+  --disable-local-rendering-over-ssh
+                        Turn local rendering over ssh off on this machine
+  --setup-ssh [user@host]
+                        Connect to a server that can't reach this machine,
+                        so terminal-code there renders here
+  --local-rendering-doctor
+                        Explain the local rendering connection
   --serve [path]        Start code server and print its url
   --skill               An agent skill to assist with modifying terminal-code
   --upgrade [--check]   Upgrade terminal-code to the latest version
@@ -65,22 +77,33 @@ terminal-code combines [terminal-browser](https://github.com/zenbu-labs/terminal
 ### Shortcuts
 
 Your terminal and terminal-code will likely conflict on important shortcuts, meaning sometimes terminal-code will never even receive your key press. To resolve
-shortcut conflicts you can run `tode --shortcut-setup`, and you will be placed into an interactive wizard that lets you change terminal or terminal-code shortcuts
+shortcut conflicts you can run `terminal-code --shortcut-setup`, and you will be placed into an interactive wizard that lets you change terminal or terminal-code shortcuts
 so they no longer conflict
 
 
 
 ### SSH
 
-The recommended way to use terminal-code over ssh is running `tode --ssh <ssh arguments>` on your local machine.
+The recommended way to use terminal-code over ssh is running `terminal-code --ssh <ssh arguments>` on your local machine.
 
-The alternative is running `tode` directly on the machine you are shh'd into. This will work, but
+The alternative is running `terminal-code` directly on the machine you are shh'd into. This will work, but
 requires:
 - every single frame drawn by vscode to be sent over the network
 - all user input to be sent over the network before vscode can react
 - misses out some [extra optimizations](https://sw.kovidgoyal.net/kitty/graphics-protocol/#local-client)
 
-`tode --ssh` improves on this by running only the backend of vscode on the remote machine. The frontend is still running locally on your device, so vscode is able to respond to interactions ~instantly. Any network requests will get proxied over the ssh connection.
+`terminal-code --ssh` improves on this by running only the backend of vscode on the remote machine. The frontend is still running locally on your device, so vscode is able to respond to interactions ~instantly. Any network requests will get proxied over the ssh connection.
+
+<!-- fixme: placeholder copy -->
+#### Local rendering over ssh
+
+If you'd rather run `terminal-code` inside the ssh session itself, it can still render on your own machine. Run `terminal-code --enable-local-rendering-over-ssh` on the server and on your local machine. terminal-code on the server then renders on your local machine, which reaches the server's code-server through the same connection, so frames never cross the network.
+
+- The server finds your machine through the ssh connection's client address and connects to it over your tailnet. Your machine only listens on its tailnet addresses, and only accepts your own devices (as Tailscale identifies them). `--allow-peer <device>` admits another device, such as a tagged server.
+- If the server can't reach your machine, run `terminal-code --setup-ssh <user@server>` on your machine instead. It opens an ssh connection to the server and a socket there that only your user can use, for as long as that connection lasts.
+- If local rendering fails, terminal-code renders on the server as before, and the editor tells you why. `terminal-code --local-rendering-doctor` explains the connection in detail.
+
+`tode` remains available as the old name of the `terminal-code` command.
 
 ### Windows
 
