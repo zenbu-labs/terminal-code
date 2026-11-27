@@ -1,5 +1,10 @@
 import type { TerminalTheme } from "@zenbu-labs/pixel/preload";
 
+export interface ClipboardMessage {
+  type: "tode-clipboard-event" | "tode-clipboard-api";
+  text: string;
+}
+
 export interface ThemeMessage {
   type: "theme";
   colors: TerminalTheme;
